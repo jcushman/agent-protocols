@@ -54,7 +54,8 @@ technologies:
     unlock: { state: locked, class: foundational }
     detail:
       links:
-        - { label: "Standard", url: "https://github.com/huggingface/tokenizers" }
+        - { label: "Hugging Face Tokenizers", url: "https://github.com/huggingface/tokenizers" }
+        - { label: "SentencePiece", url: "https://github.com/google/sentencepiece" }
       what_it_solves: >-
         A portable text-to-token-id boundary so model weights and runtimes agree
         on exactly how to encode inputs and decode outputs.
@@ -76,7 +77,8 @@ technologies:
     unlock: { state: locked, class: foundational }
     detail:
       links:
-        - { label: "Standard", url: "https://github.com/huggingface/safetensors" }
+        - { label: "safetensors", url: "https://github.com/huggingface/safetensors" }
+        - { label: "GGUF / llama.cpp", url: "https://github.com/ggerganov/llama.cpp" }
       what_it_solves: >-
         A safe, fast way to distribute model tensors across frameworks and runtimes.
       how_its_standardizing: >-
@@ -138,19 +140,21 @@ technologies:
     layout: { parents: [tokenizers, weight-formats, embeddings, chat-templates] }
     detail:
       links:
-        - { label: "Launch", url: "https://openai.com/index/introducing-chatgpt-and-whisper-apis/" }
         - { label: "Standard", url: "https://platform.openai.com/docs/api-reference/chat" }
+        - { label: "Ollama compatibility", url: "https://github.com/ollama/ollama/blob/main/docs/openai.md" }
+        - { label: "vLLM compatibility", url: "https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html" }
       what_it_solves: >-
         Applications needed a consistent way to send prompts to language
         models and receive responses — without rewriting code for every
         provider. The chat completions API shape gave developers a single
         interface to target, making LLMs a reliable, swappable component.
       how_its_standardizing: >-
-        OpenAI's Chat Completions API (March 2023) became the de facto
-        standard. Competitors adopted compatible endpoints rather than
-        fragmenting the ecosystem. No single standards body; Anthropic,
-        Google, Mistral, and open-source servers (Ollama, vLLM, llama.cpp)
-        all maintain compatible implementations.
+        OpenAI's Chat Completions API (March 2023) became the reference
+        design for chat-shaped request/response. Many SDKs, gateways, and
+        open-source servers (Ollama, vLLM, llama.cpp) expose OpenAI-compatible
+        endpoints. Major providers like Anthropic and Google use different
+        native APIs, but gateway/adapter tools provide compatibility layers.
+        Aggregators like OpenRouter exposes hundreds of models behind the same API.
       virtuous_cycle:
         - "App makers target one interface and can switch providers with minimal changes."
         - "Model hosts gain adoption by being drop-in compatible with existing clients."
@@ -163,8 +167,8 @@ technologies:
         - id: openai
           label: OpenAI
           type: server
-        - id: anthropic
-          label: Anthropic
+        - id: vllm
+          label: vLLM Server
           type: server
         - id: ollama
           label: Ollama (Local)
@@ -213,18 +217,18 @@ technologies:
                     "total_tokens": 21
                   }
                 }
-        - title: Same code, different provider
+        - title: Same code, open-source server
           description: >-
-            Switch to Anthropic — the request and response shape
-            stay the same. No code changes needed.
-          actors_visible: [app, anthropic]
+            Switch to a vLLM server running open-weights models —
+            the request and response shape stay the same.
+          actors_visible: [app, vllm]
           sparkle: true
           messages:
             - from: app
-              to: anthropic
+              to: vllm
               label: Same format
-              json_preview: '{"model":"claude-sonnet-4-20250514","messages":[{"role":"user","content":"Hello"}]}'
-            - from: anthropic
+              json_preview: '{"model":"meta-llama/Llama-3-70b","messages":[{"role":"user","content":"Hello"}]}'
+            - from: vllm
               to: app
               label: Same shape response
               json_preview: '{"choices":[{"message":{"role":"assistant","content":"Hello!"}}]}'
@@ -260,13 +264,14 @@ technologies:
         them to take real actions like searching the web, reading files,
         or calling APIs. Tool calling lets a model emit structured
         "call this function" requests, and then continue after the app
-        executes them. Tool definitions use JSON Schema, making tools
-        portable and machine-readable across providers.
+        executes them. Tool definitions use JSON Schema-like structures,
+        making tools portable and machine-readable across providers.
       how_its_standardizing: >-
         OpenAI introduced "function calling" in June 2023, later
         generalized to "tool calling." Other providers rapidly adopted
-        the same pattern. Standardization is de facto: common JSON-schema-like
-        signatures and tool-call/result message roles work across providers.
+        the same pattern. Standardization is de facto: JSON Schema-inspired
+        signatures and tool-call/result message roles work across providers,
+        though implementations vary slightly in supported schema features.
       virtuous_cycle:
         - "App makers expose capabilities once and reuse them across many models."
         - "Model makers support tool calling to be useful in real workflows, not just chat."
@@ -372,7 +377,8 @@ technologies:
     detail:
       links:
         - { label: "Launch", url: "https://www.anthropic.com/news/model-context-protocol" }
-        - { label: "Standard", url: "https://modelcontextprotocol.io/specification/" }
+        - { label: "Spec (2025-03-26)", url: "https://modelcontextprotocol.io/specification/2025-03-26" }
+        - { label: "AAIF governance", url: "https://www.linuxfoundation.org/press/linux-foundation-announces-the-formation-of-the-agentic-ai-foundation" }
       what_it_solves: >-
         Without MCP, connecting N apps to M tool providers requires N*M
         custom integrations. MCP defines a single client/server protocol
@@ -380,7 +386,8 @@ technologies:
         find what's available, tools/call to use it.
       how_its_standardizing: >-
         Introduced by Anthropic (November 2024). Rapidly adopted across
-        the agent tooling ecosystem. Open governance is expanding, with
+        the agent tooling ecosystem. Now under open governance through
+        the Agentic AI Foundation (AAIF) at the Linux Foundation, with
         community contributions and a growing ecosystem of client and
         server implementations.
       virtuous_cycle:
@@ -503,7 +510,8 @@ technologies:
     layout: { col: 4, parent: mcp }
     detail:
       links:
-        - { label: "Standard", url: "https://modelcontextprotocol.io/docs/extensions/apps" }
+        - { label: "Extension docs", url: "https://modelcontextprotocol.io/docs/extensions/apps" }
+        - { label: "MCP repo", url: "https://github.com/modelcontextprotocol" }
       what_it_solves: >-
         Lets tool providers ship sandboxed UI surfaces (previews, editors,
         dashboards) integrated into agent hosts — without giving raw OS
@@ -516,6 +524,43 @@ technologies:
         - "Tool providers can deliver better UX without per-host bespoke UI work."
         - "Hosts gain safer, richer interactions than pure JSON tool results."
         - "A common UI embedding model encourages more reusable tool apps."
+    animation:
+      actors:
+        - id: agent
+          label: Agent Host
+          type: app
+        - id: tool
+          label: Tool Server
+          type: server
+        - id: app
+          label: MCP App UI
+          type: app
+      scenes:
+        - title: Tool returns a UI surface
+          description: >-
+            Instead of raw JSON, the tool advertises an interactive UI
+            surface that can be embedded by the host.
+          actors_visible: [agent, tool]
+          messages:
+            - from: agent
+              to: tool
+              label: tools/call
+              json_preview: '{"name":"inspect","arguments":{"id":"123"}}'
+            - from: tool
+              to: agent
+              label: app descriptor
+              json_preview: '{"type":"app","src":"https://tool/ui/inspect"}'
+        - title: Host embeds the UI
+          description: >-
+            The agent host renders the UI in a sandboxed iframe and
+            communicates with it via MCP messaging.
+          actors_visible: [agent, app]
+          sparkle: true
+          messages:
+            - from: agent
+              to: app
+              label: embed
+              json_preview: '{"sandbox":true}'
 
   # ── Standard Tool Surfaces ────────────────────────────────────────
   - id: standard-tool-surfaces
@@ -539,6 +584,47 @@ technologies:
         - "Tool makers target the common surfaces to reach many agent hosts."
         - "Agent hosts standardize these surfaces to maximize reliability and safety controls."
         - "Model training/evaluation can focus on a stable set of action types."
+    animation:
+      actors:
+        - id: agent
+          label: Agent
+          type: agent
+        - id: browser
+          label: Browser Tool
+          type: server
+        - id: shell
+          label: Command Tool
+          type: server
+      scenes:
+        - title: Browser interaction
+          description: >-
+            The agent navigates a website using a standard browser action
+            vocabulary: navigate, click, type.
+          actors_visible: [agent, browser]
+          messages:
+            - from: agent
+              to: browser
+              label: navigate
+              json_preview: '{"url":"https://example.com"}'
+            - from: browser
+              to: agent
+              label: page loaded
+              json_preview: '{"title":"Example Domain"}'
+        - title: Command execution
+          description: >-
+            The same agent switches to a shell tool using a familiar
+            run/exit/stdout pattern.
+          actors_visible: [agent, shell]
+          sparkle: true
+          messages:
+            - from: agent
+              to: shell
+              label: run
+              json_preview: '{"cmd":"pytest"}'
+            - from: shell
+              to: agent
+              label: result
+              json_preview: '{"exit_code":0}'
 
   # ── Instruction Surfaces ──────────────────────────────────────────
   - id: agents-md
@@ -558,8 +644,8 @@ technologies:
       how_its_standardizing: >-
         Community-driven format that emerged from the practice of
         embedding agent instructions in READMEs. Formalized with a
-        public spec and conventions for sections. GitHub has published
-        guidance on writing effective AGENTS.md files.
+        public spec and conventions for sections. Reported adoption
+        across 60,000+ projects per agents.md tracking.
       virtuous_cycle:
         - "Repo maintainers write instructions once for all agent tools."
         - "Agent tools auto-discover guidance, reducing failures and friction."
@@ -568,6 +654,9 @@ technologies:
       actors:
         - id: agent
           label: Coding Agent
+          type: agent
+        - id: agent-b
+          label: Other Agent
           type: agent
         - id: repo-a
           label: Project Alpha
@@ -632,6 +721,21 @@ technologies:
               to: agent
               label: Different instructions
               json_preview: '## Setup\n- `npm install && npm test`\n## Style\n- Use TypeScript strict'
+        - title: Different agent, same repo
+          description: >-
+            A completely different coding agent opens the same project.
+            Same AGENTS.md, same instructions — write once, any agent reads.
+          actors_visible: [agent-b, repo-a]
+          sparkle: true
+          messages:
+            - from: agent-b
+              to: repo-a
+              label: Read AGENTS.md
+              json_preview: 'GET /AGENTS.md'
+            - from: repo-a
+              to: agent-b
+              label: Same instructions
+              json_preview: '## Setup\n- `uv sync && uv run pytest`\n## Style\n- Run ruff format'
 
   - id: llms-txt
     title: llms.txt
@@ -641,7 +745,6 @@ technologies:
     layout: { parent: tool-calling, offset: 2 }
     detail:
       links:
-        - { label: "Launch", url: "https://llmstxt.org/" }
         - { label: "Standard", url: "https://llmstxt.org/" }
       what_it_solves: >-
         LLMs and agents need to find the right documentation on a website
@@ -649,10 +752,10 @@ technologies:
         AI. llms.txt is a simple Markdown index at a well-known URL that
         tells agents exactly where to look.
       how_its_standardizing: >-
-        Proposed by Jeremy Howard (September 2024). Quickly adopted
-        by documentation platforms and developer tools. Documentation
-        platforms like Mintlify and ReadMe have added first-class support
-        for auto-generating llms.txt files.
+        Proposed by Jeremy Howard (September 2024). Adopted by
+        documentation platforms and developer tools, with growing
+        ecosystem support for auto-generating llms.txt files from
+        existing site content.
       virtuous_cycle:
         - "Sites publish an index; agents spend fewer tokens and fetch fewer pages."
         - "Docs platforms add generators; adoption becomes near-zero effort."
@@ -735,16 +838,17 @@ technologies:
     detail:
       links:
         - { label: "Standard", url: "https://agentskills.io/specification" }
+        - { label: "Codex skills docs", url: "https://developers.openai.com/codex/skills/" }
       what_it_solves: >-
         Agents need reusable playbooks — task-specific knowledge with
         optional scripts and references. Agent Skills package this know-how
         in a standard directory format that any agent platform can discover
         and use.
       how_its_standardizing: >-
-        Open standard with multiple ecosystem participants. OpenAI's Codex
-        docs explicitly state it "builds on the open agent skills standard."
-        Implemented by VS Code Copilot, Cursor, OpenAI Codex. Companies
-        like Cloudflare publish skills repos.
+        Open standard with emerging adoption among IDE agents. OpenAI's
+        Codex docs explicitly state it "builds on the open agent skills
+        standard." Companies like Cloudflare publish skills repos for
+        cross-platform use.
       virtuous_cycle:
         - "Skill authors write once and reach many agent hosts."
         - "Hosts get a growing library of reusable procedures."
@@ -843,6 +947,29 @@ technologies:
         - "Users can trust skills based on provenance + declared permissions."
         - "Marketplaces reduce risk without bespoke vetting per host."
         - "Skill authors get a portable security envelope across platforms."
+    animation:
+      actors:
+        - id: agent
+          label: Agent Host
+          type: agent
+        - id: registry
+          label: Skill Registry
+          type: registry
+      scenes:
+        - title: Verify skill provenance
+          description: >-
+            Before loading a skill, the agent host verifies its signature
+            and declared permissions.
+          actors_visible: [agent, registry]
+          messages:
+            - from: agent
+              to: registry
+              label: fetch metadata
+              json_preview: '{"skill":"weather","version":"1.2.0"}'
+            - from: registry
+              to: agent
+              label: signed manifest
+              json_preview: '{"signature":"...","permissions":["network"]}'
 
 
   # ── Agent Loop ──────────────────────────────────────────────────────
@@ -852,8 +979,6 @@ technologies:
     icon_alt: "loop"
     tagline: Models that keep going
     layout: { col: 3, parent: tool-calling }
-    tree:
-      depends_on: [tool-calling]
     detail:
       links:
         - { label: "Pattern", url: "https://www.anthropic.com/engineering/building-effective-agents" }
@@ -873,6 +998,51 @@ technologies:
         - "Developers build on the pattern rather than inventing custom control flows."
         - "Models are trained to emit stop signals and multi-step plans reliably."
         - "Tooling (tracing, guardrails, timeouts) targets a predictable execution model."
+    animation:
+      actors:
+        - id: agent
+          label: Agent Host
+          type: agent
+        - id: model
+          label: Model
+          type: model
+        - id: tool
+          label: Tool
+          type: server
+      scenes:
+        - title: Plan
+          description: >-
+            The agent asks the model what to do next given the current state.
+          actors_visible: [agent, model]
+          messages:
+            - from: agent
+              to: model
+              label: prompt
+              json_preview: '{"goal":"Fix failing tests"}'
+        - title: Act
+          description: >-
+            The model emits a tool call; the host executes it.
+          actors_visible: [agent, model, tool]
+          messages:
+            - from: model
+              to: agent
+              label: tool_call
+              json_preview: '{"name":"run_tests"}'
+            - from: agent
+              to: tool
+              label: execute
+              json_preview: '{"cmd":"pytest"}'
+        - title: Iterate
+          description: >-
+            Results are fed back into the model, continuing the loop
+            until completion.
+          actors_visible: [agent, model]
+          sparkle: true
+          messages:
+            - from: agent
+              to: model
+              label: result
+              json_preview: '{"failures":0}'
 
   # ── A2A ───────────────────────────────────────────────────────────
   - id: a2a
@@ -884,7 +1054,8 @@ technologies:
     detail:
       links:
         - { label: "Launch", url: "https://developers.googleblog.com/en/a2a-a-new-era-of-agent-interoperability/" }
-        - { label: "Standard", url: "https://agent2agent.info/specification/" }
+        - { label: "Specification", url: "https://agent2agent.info/specification/" }
+        - { label: "Linux Foundation", url: "https://www.linuxfoundation.org/projects/agent2agent" }
       what_it_solves: >-
         Agents built on different frameworks — by different vendors — need
         to discover each other, negotiate capabilities, and coordinate on
@@ -1004,17 +1175,18 @@ technologies:
     layout: { col: 4, parent: a2a }
     detail:
       links:
-        - { label: "Launch", url: "https://www.shopify.com/ucp" }
-        - { label: "Standard", url: "https://www.shopify.com/ucp" }
+        - { label: "Shopify launch", url: "https://www.shopify.com/ucp" }
+        - { label: "Google explainer", url: "https://developers.googleblog.com/under-the-hood-universal-commerce-protocol-ucp/" }
       what_it_solves: >-
         Agents that shop need a standard way to browse products, build
         carts, and complete checkout across different merchants — without
-        custom integration per store. UCP standardizes the entire commerce
-        flow from discovery through post-purchase.
+        custom integration per store. UCP defines capabilities discovery,
+        checkout sessions, and payment handlers for agent commerce.
       how_its_standardizing: >-
-        Developed by Shopify and co-developed with Google. Launched with
-        support from large retailers and payments ecosystem partners.
-        Open for any merchant, agent, or payment processor to implement.
+        Launched January 2026 by Shopify and Google. Specifies capability
+        negotiation, checkout session creation, and payment handler
+        interfaces. Supported by large retailers and payments ecosystem
+        partners. Open for any merchant, agent, or payment processor.
       virtuous_cycle:
         - "Merchants implement once and accept many agents."
         - "Agents implement once and can shop broadly."
@@ -1118,18 +1290,20 @@ technologies:
     layout: { col: 4, parent: a2a }
     detail:
       links:
-        - { label: "Standard", url: "https://developer.visa.com/capabilities/trusted-agent-protocol/trusted-agent-protocol-specifications" }
+        - { label: "HTTP Message Signatures (IETF)", url: "https://datatracker.ietf.org/wg/httpbis/documents/" }
+        - { label: "Cloudflare Web Bot Auth", url: "https://blog.cloudflare.com/secure-agentic-commerce/" }
+        - { label: "Visa TAP", url: "https://developer.visa.com/capabilities/trusted-agent-protocol/trusted-agent-protocol-specifications" }
       what_it_solves: >-
         Websites and merchants need to distinguish legitimate,
         user-authorized agents from scrapers and bots. Agent Identity
         protocols use cryptographic signatures to prove an agent's
         identity on every request — no CAPTCHAs, no IP allowlists.
       how_its_standardizing: >-
-        Cloudflare proposed Web Bot Auth based on active IETF drafts.
-        Visa built the Trusted Agent Protocol (TAP) on the same HTTP
-        Message Signatures foundation. IETF maintains the HTTP Message
-        Signatures standard. Cloudflare and Visa maintain their specific
-        implementations.
+        Built on HTTP Message Signatures (IETF standards track) as the
+        base primitive. Domain profiles add agent-specific semantics:
+        Cloudflare's Web Bot Auth and Visa's Trusted Agent Protocol (TAP)
+        both use the same signature foundation with different registry
+        and tagging conventions for their ecosystems.
       virtuous_cycle:
         - "Sites can apply policy based on verified identity rather than guesswork."
         - "Agents get reliable access without adversarial bot mitigation."
@@ -1221,36 +1395,191 @@ technologies:
         - "Operators can debug and govern agents across vendors with one trace format."
         - "Vendors integrate once with monitoring and compliance tooling."
         - "Evaluations and safety reviews become reproducible and comparable."
+    animation:
+      actors:
+        - id: agent
+          label: Agent
+          type: agent
+        - id: trace
+          label: Trace Store
+          type: server
+      scenes:
+        - title: Emit trace events
+          description: >-
+            Each model call and tool action is recorded as a structured
+            trace event.
+          actors_visible: [agent, trace]
+          messages:
+            - from: agent
+              to: trace
+              label: span
+              json_preview: '{"event":"tool_call","name":"read_file"}'
+
+  - id: ap2
+    title: AP2
+    icon: images/icon-ap2.png
+    icon_alt: "pay"
+    tagline: Agent-to-agent payments
+    layout: { col: 5, parent: agent-identity }
+    detail:
+      links:
+        - { label: "Specification", url: "https://ap2-protocol.org/specification/" }
+      what_it_solves: >-
+        Agents that transact on behalf of users need a standard way to
+        request, authorize, and settle payments — with cryptographic
+        proof of user consent and spending limits. AP2 defines payment
+        mandates that bind user intent to agent actions.
+      how_its_standardizing: >-
+        Open specification for agent-initiated payments. Defines mandate
+        objects with scope, limits, and TTL that travel with payment
+        requests. Designed to work alongside identity protocols like
+        TAP and Web Bot Auth.
+      virtuous_cycle:
+        - "Agents can transact across merchants with verifiable authorization."
+        - "Merchants get cryptographic proof of user consent, reducing fraud."
+        - "Payment rails gain a standard agent interface instead of per-agent integrations."
+    animation:
+      actors:
+        - id: agent
+          label: Paying Agent
+          type: agent
+        - id: merchant
+          label: Merchant
+          type: merchant
+        - id: wallet
+          label: Wallet
+          type: server
+      scenes:
+        - title: Present payment mandate
+          description: >-
+            The agent submits a signed mandate proving user authorization
+            and spending limits.
+          actors_visible: [agent, merchant]
+          messages:
+            - from: agent
+              to: merchant
+              label: pay
+              json_preview: '{"mandate_id":"m-123","amount":4999}'
+        - title: Settle payment
+          description: >-
+            The merchant verifies the mandate and settles through a
+            compatible payment rail.
+          actors_visible: [merchant, wallet]
+          sparkle: true
+          messages:
+            - from: merchant
+              to: wallet
+              label: charge
+              json_preview: '{"mandate_id":"m-123"}'
 
   - id: intent-mandates
     title: Signed Intent Mandates
     icon: images/icon-mandate.png
     icon_alt: "sig"
     tagline: Verifiable consent for actions
-    layout: { col: 5, parent: agent-identity }
+    layout: { col: 6, parent: ap2 }
     unlock: { state: locked, class: frontier }
     detail:
       links:
-        - { label: "Standard (payments example)", url: "https://ap2-protocol.org/specification/" }
+        - { label: "Inspiration (AP2)", url: "https://ap2-protocol.org/specification/" }
       what_it_solves: >-
         A signed object binding user intent and constraints (scope, limits,
         TTL) to downstream agent actions — generalizing the "payments
-        mandate" idea.
+        mandate" pattern from AP2 to arbitrary domains.
       how_its_standardizing: >-
         Expected to converge first in regulated domains (payments, IT ops,
         healthcare), then generalize to cross-domain consent receipts with
-        standard fields.
+        standard fields. AP2's payment mandates provide the reference design.
       virtuous_cycle:
         - "Counterparties can rely on machine-verifiable authorization."
         - "Users get enforceable constraints instead of trusting opaque agents."
         - "Platforms interoperate on the same consent artifact across workflows."
+    animation:
+      actors:
+        - id: user
+          label: User
+          type: app
+        - id: agent
+          label: Agent
+          type: agent
+        - id: service
+          label: Service
+          type: server
+      scenes:
+        - title: User signs intent
+          description: >-
+            The user signs an intent object defining scope, limits,
+            and expiration.
+          actors_visible: [user, agent]
+          messages:
+            - from: user
+              to: agent
+              label: sign
+              json_preview: '{"action":"deploy","ttl":"1h"}'
+        - title: Agent presents mandate
+          description: >-
+            The agent attaches the signed mandate to downstream requests.
+          actors_visible: [agent, service]
+          sparkle: true
+          messages:
+            - from: agent
+              to: service
+              label: authorized request
+              json_preview: '{"mandate":"signed_blob"}'
+
+  - id: agent-card
+    title: AgentCard
+    icon: images/icon-agent-card.png
+    icon_alt: "card"
+    tagline: Well-known agent descriptors
+    layout: { parent: agent-loop }
+    detail:
+      links:
+        - { label: "A2A AgentCard spec", url: "https://agent2agent.info/specification/#agentcard" }
+      what_it_solves: >-
+        Before agents can collaborate, they need to discover each other's
+        capabilities, endpoints, and authentication requirements. AgentCard
+        is a JSON descriptor at a well-known URL that tells other agents
+        what this agent can do and how to talk to it.
+      how_its_standardizing: >-
+        Defined as part of A2A. Agents publish a JSON file at
+        /.well-known/agent-card.json describing name, skills, supported
+        input/output modes, and auth schemes. Provides the discovery
+        primitive that higher-level registries can index.
+      virtuous_cycle:
+        - "Agents can discover each other without a central directory."
+        - "Registries index the same descriptor format across vendors."
+        - "A standard metadata shape enables tooling (routers, monitors, catalogs)."
+    animation:
+      actors:
+        - id: agent
+          label: Agent
+          type: agent
+        - id: remote
+          label: Remote Agent
+          type: agent
+      scenes:
+        - title: Discover capabilities
+          description: >-
+            An agent fetches a remote agent's well-known AgentCard
+            descriptor.
+          actors_visible: [agent, remote]
+          messages:
+            - from: agent
+              to: remote
+              label: GET /.well-known/agent-card.json
+              json_preview: '{}'
+            - from: remote
+              to: agent
+              label: AgentCard
+              json_preview: '{"skills":["search","summarize"]}'
 
   - id: agent-registries
     title: Agent Registries
     icon: images/icon-registry.png
     icon_alt: "dir"
     tagline: Discovery, routing, permissions
-    layout: { parent: agent-loop }
+    layout: { parent: agent-card }
     unlock: { state: locked, class: frontier }
     detail:
       links:
@@ -1259,12 +1588,36 @@ technologies:
         A standard directory for agents: capability queries, routing,
         health/versioning, and enterprise entitlements.
       how_its_standardizing: >-
-        Likely to emerge from a mix of well-known descriptors + enterprise
-        catalogs, with A2A-style AgentCards as the basic metadata unit.
+        Likely to emerge from enterprise catalogs and public indexes
+        that aggregate AgentCard descriptors. A2A's well-known discovery
+        provides the base layer; registries add search, ACLs, and routing.
       virtuous_cycle:
         - "Enterprises can safely compose multi-vendor agent systems."
         - "Vendors plug into one directory surface instead of bespoke integrations."
         - "Governance (who can call what) becomes portable."
+    animation:
+      actors:
+        - id: agent
+          label: Agent
+          type: agent
+        - id: registry
+          label: Registry
+          type: registry
+      scenes:
+        - title: Query registry
+          description: >-
+            An agent searches a registry for other agents matching
+            required capabilities.
+          actors_visible: [agent, registry]
+          messages:
+            - from: agent
+              to: registry
+              label: search
+              json_preview: '{"skill":"invoice-extraction"}'
+            - from: registry
+              to: agent
+              label: results
+              json_preview: '[{"agent":"InvoiceAgent"}]'
 
   - id: agent-lingua
     title: Agent Lingua Franca
@@ -1290,6 +1643,26 @@ technologies:
         - "Multi-agent workflows become economical as token overhead shrinks."
         - "Heterogeneous model teams communicate efficiently despite different tokenizers."
         - "Shared vocabularies enable richer coordination primitives than natural language."
+    animation:
+      actors:
+        - id: agent-a
+          label: Agent A
+          type: agent
+        - id: agent-b
+          label: Agent B
+          type: agent
+      scenes:
+        - title: Compressed exchange
+          description: >-
+            Agents communicate using a shared compressed representation
+            instead of natural language.
+          actors_visible: [agent-a, agent-b]
+          sparkle: true
+          messages:
+            - from: agent-a
+              to: agent-b
+              label: message
+              json_preview: '{"sym":"Δ7α"}'
 
   - id: human-context-protocol
     title: Human Context Protocol
@@ -1309,11 +1682,12 @@ technologies:
         losing intent, preferences, and consent. HCP defines a clean boundary
         between an agent and a user-aligned memory manager.
       how_its_standardizing: >-
-        HCP proposes a minimal protocol surface — schema definition, preference
-        search, and preference update — between agents and external "human context"
-        stores. Research-driven and early, with no formal standards body yet,
-        but explicitly framed to enable cross-vendor interoperability and
-        user-controlled memory portability.
+        HCP is a research proposal from the Stanford Digital Economy Lab,
+        not yet a formal specification. It proposes a conceptual protocol
+        surface — schema definition, preference search, and preference update —
+        between agents and external "human context" stores. Explicitly framed
+        to enable cross-vendor interoperability and user-controlled memory
+        portability if adopted.
       virtuous_cycle:
         - "Users gain portable, agent-agnostic preferences and long-term context."
         - "Agent builders can offload memory, consent, and personalization safely."

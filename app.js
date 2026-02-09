@@ -647,10 +647,12 @@ function showTree() {
   document.getElementById('app').innerHTML = `
     <div class="tree-page">
       <header class="tree-header">
+        <div class="tree-header-text">
+          <h1>${escapeHtml(DATA.title)}</h1>
+          <p>${escapeHtml(DATA.subtitle)}</p>
+          ${readMoreBtn}
+        </div>
         ${getToolbarHtml()}
-        <h1>${escapeHtml(DATA.title)}</h1>
-        <p>${escapeHtml(DATA.subtitle)}</p>
-        ${readMoreBtn}
       </header>
       <div class="tree-container">
         <div class="tree-wrapper" style="width:${wrapperW}px;height:${wrapperH}px">
@@ -744,10 +746,7 @@ function showDetail(techId) {
       <div class="step${i === 0 ? ' active' : ''}" data-scene="${i}">
         <div class="step__content">
           <div class="step__number">Step ${i + 1} of ${scenes.length}</div>
-          <div class="step__title">
-            ${escapeHtml(scene.title)}
-            ${scene.sparkle ? '<span class="step__sparkle" aria-label="Interoperable">&#10022;</span>' : ''}
-          </div>
+          <div class="step__title">${escapeHtml(scene.title)}</div>
           <div class="step__description">${escapeHtml(scene.description)}</div>
         </div>
       </div>
@@ -854,6 +853,9 @@ function initAnimation(tech) {
   const root = document.getElementById('anim-root');
   if (!root || !tech.animation) return;
 
+  // Reset previous visible actors for sparkle comparison
+  previousVisibleIds = [];
+
   const allActors = tech.animation.actors;
 
   // Create persistent actor elements
@@ -872,13 +874,14 @@ function initAnimation(tech) {
   actorsHtml += '</div>';
 
   actorsHtml += '<div class="anim-messages" id="anim-messages"></div>';
-  actorsHtml += '<div class="sparkle-badge" id="sparkle-badge" style="display:none;"><span class="star">&#10022;</span> Interoperable</div>';
 
   root.innerHTML = actorsHtml;
 
   // Show first scene
   setActiveScene(tech, 0);
 }
+
+let previousVisibleIds = [];
 
 function setActiveScene(tech, index) {
   activeSceneIndex = index;
@@ -889,6 +892,11 @@ function setActiveScene(tech, index) {
   const visibleIds = scene.actors_visible;
   const n = visibleIds.length;
 
+  // Determine which actors are newly visible (not in previous scene)
+  const newActorIds = scene.sparkle 
+    ? visibleIds.filter(id => !previousVisibleIds.includes(id))
+    : [];
+
   // Position and show/hide actors
   allActors.forEach(actor => {
     const el = document.getElementById(`actor-${actor.id}`);
@@ -898,19 +906,19 @@ function setActiveScene(tech, index) {
       const leftPct = ((visibleIdx + 0.5) / n) * 100;
       el.style.left = leftPct + '%';
       el.style.opacity = '1';
+      // Add sparkle to newly visible actors
+      el.classList.toggle('actor-sparkle', newActorIds.includes(actor.id));
     } else {
       el.style.opacity = '0';
+      el.classList.remove('actor-sparkle');
     }
   });
 
   // Render messages
   renderMessages(scene, visibleIds, n);
 
-  // Sparkle badge
-  const badge = document.getElementById('sparkle-badge');
-  if (badge) {
-    badge.style.display = scene.sparkle ? 'flex' : 'none';
-  }
+  // Remember current visible actors for next scene comparison
+  previousVisibleIds = [...visibleIds];
 }
 
 function renderMessages(scene, visibleIds, numActors) {

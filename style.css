@@ -64,10 +64,18 @@ body {
 
 /* ── Tree Header ───────────────────────────────────────────────── */
 .tree-header {
-  position: relative;
-  text-align: center;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px 24px;
   padding: 20px 24px 24px;
   border-bottom: 3px solid var(--border);
+}
+
+.tree-header-text {
+  flex: 1;
+  min-width: 280px;
 }
 
 .tree-header h1 {
@@ -82,6 +90,11 @@ body {
   font-size: 0.8rem;
   color: var(--fg-muted);
   letter-spacing: 0.04em;
+}
+
+.tree-header .toolbar {
+  position: static;
+  flex-shrink: 0;
 }
 
 .read-more-btn {
@@ -551,6 +564,7 @@ body {
 }
 
 .actor-icon {
+  position: relative;
   width: 80px;
   height: 80px;
   border: 2px solid var(--border);
@@ -575,6 +589,17 @@ body {
   font-size: 0.75rem;
   font-weight: 700;
   white-space: nowrap;
+}
+
+/* Actor sparkle indicator for new/swapped actors */
+.anim-actor.actor-sparkle::after {
+  content: "✨";
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  font-size: 1.2rem;
+  animation: sparkle-pulse 1.5s ease-in-out infinite;
+  z-index: 10;
 }
 
 /* Message list */
@@ -829,7 +854,8 @@ body {
     transition: none;
   }
 
-  .sparkle-badge .star {
+  .sparkle-badge .star,
+  .anim-actor.actor-sparkle::after {
     animation: none;
   }
 
@@ -927,6 +953,55 @@ body {
   }
 }
 
+/* ── Landscape phones: header becomes left sidebar ─────────────── */
+@media (orientation: landscape) and (max-height: 500px) {
+  .tree-page {
+    flex-direction: row;
+  }
+
+  .tree-header {
+    flex-direction: column;
+    align-items: flex-start;
+    width: 220px;
+    flex-shrink: 0;
+    padding: 16px;
+    border-bottom: none;
+    border-right: 3px solid var(--border);
+    overflow-y: auto;
+  }
+
+  .tree-header-text {
+    min-width: 0;
+  }
+
+  .tree-header h1 {
+    font-size: 1rem;
+  }
+
+  .tree-header p {
+    font-size: 0.7rem;
+  }
+
+  .tree-header .toolbar {
+    flex-direction: column;
+    width: 100%;
+    margin-top: auto;
+  }
+
+  .tree-header .toolbar-btn {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .tree-container {
+    flex: 1;
+  }
+
+  .tree-footer {
+    display: none;
+  }
+}
+
 /* ================================================================
    UTILITY
    ================================================================ */
@@ -947,17 +1022,13 @@ body {
    ================================================================ */
 
 .toolbar {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  z-index: 200;
   display: flex;
   gap: 8px;
+  z-index: 200;
 }
 
-/* In detail view, toolbar is fixed */
+/* In detail view, toolbar pushes to the right */
 .detail-header .toolbar {
-  position: static;
   margin-left: auto;
 }
 
