@@ -37,8 +37,76 @@ async function init() {
        <small>Serve via HTTP: python -m http.server</small></div>`;
     return;
   }
+  createToolbar();
   window.addEventListener('hashchange', route);
   route();
+}
+
+// ── Toolbar (Edit + Fullscreen) ───────────────────────────────────
+function createToolbar() {
+  // Toolbar is now created inline in showTree/showDetail
+  // Just set up fullscreen listeners once
+  if (document.fullscreenEnabled || document.webkitFullscreenEnabled) {
+    document.addEventListener('fullscreenchange', updateFullscreenButton);
+    document.addEventListener('webkitfullscreenchange', updateFullscreenButton);
+  }
+}
+
+function getToolbarHtml() {
+  let html = '<div class="toolbar" id="toolbar">';
+  
+  // Edit button (GitHub link)
+  html += `<a class="toolbar-btn" href="https://github.com/jcushman/agent-protocols/" target="_blank" rel="noopener noreferrer" aria-label="Edit on GitHub">
+    <span class="btn-icon">&lt;/&gt;</span> Edit
+  </a>`;
+  
+  // Fullscreen button (only if supported)
+  if (document.fullscreenEnabled || document.webkitFullscreenEnabled) {
+    html += `<button class="toolbar-btn" id="fullscreen-btn" aria-label="Toggle fullscreen">
+      <span class="btn-icon">[ ]</span> Fullscreen
+    </button>`;
+  }
+  
+  html += '</div>';
+  return html;
+}
+
+function attachToolbarListeners() {
+  const fsBtn = document.getElementById('fullscreen-btn');
+  if (fsBtn) {
+    fsBtn.addEventListener('click', toggleFullscreen);
+  }
+}
+
+// ── Fullscreen ────────────────────────────────────────────────────
+function toggleFullscreen() {
+  if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+    // Enter fullscreen
+    if (document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen();
+    } else if (document.documentElement.webkitRequestFullscreen) {
+      document.documentElement.webkitRequestFullscreen();
+    }
+  } else {
+    // Exit fullscreen
+    if (document.exitFullscreen) {
+      document.exitFullscreen();
+    } else if (document.webkitExitFullscreen) {
+      document.webkitExitFullscreen();
+    }
+  }
+}
+
+function updateFullscreenButton() {
+  const btn = document.getElementById('fullscreen-btn');
+  if (!btn) return;
+  
+  const isFullscreen = document.fullscreenElement || document.webkitFullscreenElement;
+  if (isFullscreen) {
+    btn.innerHTML = '<span class="fs-icon">[x]</span> Exit';
+  } else {
+    btn.innerHTML = '<span class="fs-icon">[ ]</span> Fullscreen';
+  }
 }
 
 // ── Router ────────────────────────────────────────────────────────
@@ -574,11 +642,15 @@ function showTree() {
       </div>`;
   });
 
+  const readMoreBtn = DATA.details ? `<button class="read-more-btn" onclick="showDetailsModal()">Read more &gt;</button>` : '';
+
   document.getElementById('app').innerHTML = `
     <div class="tree-page">
       <header class="tree-header">
+        ${getToolbarHtml()}
         <h1>${escapeHtml(DATA.title)}</h1>
         <p>${escapeHtml(DATA.subtitle)}</p>
+        ${readMoreBtn}
       </header>
       <div class="tree-container">
         <div class="tree-wrapper" style="width:${wrapperW}px;height:${wrapperH}px">
@@ -591,6 +663,8 @@ function showTree() {
       </div>
       <footer class="tree-footer">Click a node to explore how it works</footer>
     </div>`;
+
+  attachToolbarListeners();
 
   // Center the scroll on the tree
   const treeContainer = document.querySelector('.tree-container');
@@ -705,9 +779,9 @@ function showDetail(techId) {
       </div>`;
   }
 
-  // Icon for header
-  const headerIconHtml = tech.icon
-    ? `<img src="${escapeHtml(tech.icon)}" alt="${escapeHtml(tech.icon_alt)}" class="header-icon-img">`
+  // Icon for hero (larger)
+  const heroIconHtml = tech.icon
+    ? `<img src="${escapeHtml(tech.icon)}" alt="${escapeHtml(tech.icon_alt)}" class="hero-icon-img">`
     : escapeHtml(tech.icon_alt);
 
   // Reduced-motion check
@@ -717,12 +791,15 @@ function showDetail(techId) {
     <div class="detail-page">
       <header class="detail-header">
         <button class="back-btn" onclick="navigateTo('')">&larr; Tree</button>
-        <div class="header-icon" aria-hidden="true">${headerIconHtml}</div>
-        <h1>${escapeHtml(tech.title)}</h1>
+        ${getToolbarHtml()}
       </header>
       <div class="detail-content">
         <div class="detail-hero">
-          <div class="tagline">${escapeHtml(tech.tagline)}</div>
+          <div class="hero-icon" aria-hidden="true">${heroIconHtml}</div>
+          <div class="hero-text">
+            <h1 class="hero-title">${escapeHtml(tech.title)}</h1>
+            <div class="tagline">${escapeHtml(tech.tagline)}</div>
+          </div>
         </div>
 
         ${linksHtml}
@@ -761,6 +838,9 @@ function showDetail(techId) {
       });
     }
   }
+
+  // Attach toolbar listeners
+  attachToolbarListeners();
 
   // Scroll to top
   window.scrollTo(0, 0);
@@ -849,7 +929,9 @@ function renderMessages(scene, visibleIds, numActors) {
     const widthPct = Math.abs(toPct - fromPct);
     const direction = toPct > fromPct ? 'right' : 'left';
 
-    const hasDetail = msg.json_full && msg.json_full.trim();
+    // Use json_full if available, otherwise fall back to json_preview for modal content
+    const hasPreview = msg.json_preview && msg.json_preview.trim();
+    const detailContent = (msg.json_full && msg.json_full.trim()) || msg.json_preview || '';
     const detailId = `msg-detail-${activeSceneIndex}-${mi}`;
 
     html += `
@@ -860,13 +942,12 @@ function renderMessages(scene, visibleIds, numActors) {
         <div class="msg-arrow" style="margin-left:${leftPct}%;width:${widthPct}%">
           <div class="msg-arrow-head ${direction}"></div>
         </div>
-        ${msg.json_preview ? `
-          <div class="msg-preview${hasDetail ? ' expandable' : ''}" style="margin-left:${Math.max(0, leftPct - 5)}%;width:${Math.min(100, widthPct + 10)}%"
-               ${hasDetail ? `onclick="toggleDetail('${detailId}')" onkeydown="if(event.key==='Enter')toggleDetail('${detailId}')" role="button" tabindex="0" title="Click to expand"` : ''}>
-            <code>${escapeHtml(msg.json_preview)}</code>${hasDetail ? ' <span class="expand-hint">[+]</span>' : ''}
-          </div>` : ''}
-        ${hasDetail ? `
-          <div class="msg-detail" id="${detailId}" style="margin-left:${Math.max(0, leftPct - 5)}%;width:${Math.min(100, widthPct + 10)}%">${escapeHtml(msg.json_full.trim())}</div>` : ''}
+        ${hasPreview ? `
+          <div class="msg-preview expandable" style="margin-left:${Math.max(0, leftPct - 5)}%;width:${Math.min(100, widthPct + 10)}%"
+               onclick="toggleDetail('${detailId}', '${escapeHtml(msg.label).replace(/'/g, "\\'")}'); event.stopPropagation();" onkeydown="if(event.key==='Enter'){toggleDetail('${detailId}', '${escapeHtml(msg.label).replace(/'/g, "\\'")}'); event.stopPropagation();}" role="button" tabindex="0" title="Click to expand">
+            <code>${escapeHtml(msg.json_preview)}</code> <span class="expand-hint">[+]</span>
+          </div>
+          <div class="msg-detail" id="${detailId}" style="display:none;">${escapeHtml(detailContent.trim())}</div>` : ''}
       </div>`;
   });
 
@@ -962,11 +1043,71 @@ function setupScrollObserver(tech) {
   };
 }
 
-// ── Toggle JSON Detail ────────────────────────────────────────────
-function toggleDetail(id) {
+// ── Modal for JSON Detail ─────────────────────────────────────────
+function showModal(content, title) {
+  // Remove existing modal if any
+  closeModal();
+  
+  const modal = document.createElement('div');
+  modal.className = 'json-modal';
+  modal.id = 'json-modal';
+  modal.innerHTML = `
+    <div class="json-modal__backdrop" onclick="closeModal()"></div>
+    <div class="json-modal__content">
+      <div class="json-modal__header">
+        <div class="json-modal__title">${escapeHtml(title || 'Full Message')}</div>
+        <button class="json-modal__close" onclick="closeModal()" aria-label="Close">&times;</button>
+      </div>
+      <pre class="json-modal__code">${escapeHtml(content)}</pre>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  
+  // Focus trap and escape key
+  modal.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeModal();
+  });
+  modal.querySelector('.json-modal__close').focus();
+}
+
+function closeModal() {
+  const modal = document.getElementById('json-modal');
+  if (modal) modal.remove();
+}
+
+// ── Details Modal (Read more) ─────────────────────────────────────
+function showDetailsModal() {
+  if (!DATA || !DATA.details) return;
+  
+  closeModal();
+  
+  const modal = document.createElement('div');
+  modal.className = 'json-modal';
+  modal.id = 'json-modal';
+  modal.innerHTML = `
+    <div class="json-modal__backdrop" onclick="closeModal()"></div>
+    <div class="json-modal__content">
+      <div class="json-modal__header">
+        <div class="json-modal__title">About This Project</div>
+        <button class="json-modal__close" onclick="closeModal()" aria-label="Close">&times;</button>
+      </div>
+      <div class="json-modal__body">${DATA.details.trim()}</div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  
+  modal.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeModal();
+  });
+  modal.querySelector('.json-modal__close').focus();
+}
+
+// ── Toggle JSON Detail (legacy inline, now opens modal) ───────────
+function toggleDetail(id, label) {
   const el = document.getElementById(id);
   if (!el) return;
-  el.classList.toggle('expanded');
+  const content = el.textContent || el.innerText;
+  showModal(content, label);
 }
 
 // ── Actor Icon Text (fallback when no image) ──────────────────────

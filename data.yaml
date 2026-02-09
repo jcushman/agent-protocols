@@ -1,5 +1,13 @@
 title: The Agent Protocol Tech Tree
-subtitle: How open standards for AI agents emerged, layer by layer
+subtitle: How open standards for AI agents emerge layer by layer
+details: |
+  Open protocols emerge when decentralized parties benefit from speaking the same language.
+  If your software will be used more when it outputs data that other software can read,
+  and reads data that other software produces, all tools tend to converge on a common format.
+  AI agents are currently incentivized to converge in this way, and are rapidly exploring
+  and adopting standards. This tool explores
+  the standards they are converging on and why each layer came to be.
+
 
 # Actor icon images — keyed by actor type, referenced in animations.
 # Generate with: cd tools && uv run generate-images --patch-data
@@ -17,7 +25,7 @@ actor_icons:
 # Clusters are decorative dashed-outline group boxes.
 clusters:
   - id: c-foundations
-    label: Pre-API Quasi-Standards
+    label: Model building standards
     members: [tokenizers, weight-formats, embeddings, chat-templates]
 
   - id: c-instruction
@@ -1283,3 +1291,81 @@ technologies:
         - "Heterogeneous model teams communicate efficiently despite different tokenizers."
         - "Shared vocabularies enable richer coordination primitives than natural language."
 
+  - id: human-context-protocol
+    title: Human Context Protocol
+    icon: images/icon-hcp.png
+    icon_alt: "ctx"
+    tagline: Portable user memory and preferences
+    layout: { parent: agent-loop }
+    unlock: { state: locked, class: frontier }
+    detail:
+      links:
+        - { label: "Project", url: "https://digitaleconomy.stanford.edu/project/loyal-agents/hcp-human-context-protocol/" }
+        - { label: "Paper", url: "https://digitaleconomy.stanford.edu/wp-content/uploads/2024/11/Loyal-Agents.pdf" }
+      what_it_solves: >-
+        Agents today manage user preferences, goals, and long-term context in
+        ad hoc, vendor-specific memory systems. This makes it impossible for users
+        to switch agents, combine agents, or delegate tasks across systems without
+        losing intent, preferences, and consent. HCP defines a clean boundary
+        between an agent and a user-aligned memory manager.
+      how_its_standardizing: >-
+        HCP proposes a minimal protocol surface — schema definition, preference
+        search, and preference update — between agents and external "human context"
+        stores. Research-driven and early, with no formal standards body yet,
+        but explicitly framed to enable cross-vendor interoperability and
+        user-controlled memory portability.
+      virtuous_cycle:
+        - "Users gain portable, agent-agnostic preferences and long-term context."
+        - "Agent builders can offload memory, consent, and personalization safely."
+        - "Memory providers can specialize and compete without locking in agents."
+    animation:
+      actors:
+        - id: agent
+          label: AI Agent
+          type: agent
+        - id: memory-a
+          label: Context Manager
+          type: server
+        - id: memory-b
+          label: Other Provider
+          type: server
+      scenes:
+        - title: Define preference schema
+          description: >-
+            The agent declares the structure of user preferences it may read or
+            write, without embedding them directly in prompts.
+          actors_visible: [agent, memory-a]
+          messages:
+            - from: agent
+              to: memory-a
+              label: Define schema
+              json_preview: '{"namespace":"prefs","fields":["tone","units"]}'
+        - title: Query human context
+          description: >-
+            The agent retrieves relevant preferences at runtime, scoped to the
+            current task.
+          actors_visible: [agent, memory-a]
+          messages:
+            - from: agent
+              to: memory-a
+              label: Search prefs
+              json_preview: '{"query":"units","top_k":1}'
+            - from: memory-a
+              to: agent
+              label: Preference
+              json_preview: '{"key":"units","value":"metric"}'
+        - title: Swap memory provider
+          description: >-
+            A different HCP-compliant context manager can be used without changing
+            the agent logic — user preferences travel with the user.
+          actors_visible: [agent, memory-b]
+          sparkle: true
+          messages:
+            - from: agent
+              to: memory-b
+              label: Search prefs
+              json_preview: '{"query":"units","top_k":1}'
+            - from: memory-b
+              to: agent
+              label: Same interface
+              json_preview: '{"key":"units","value":"metric"}'

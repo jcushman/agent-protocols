@@ -36,6 +36,46 @@ styles:
 
 images:
 
+  # ── Tokenizers ────────────────────────────────────────────────
+  - filename: icon-tokenizers.png
+    category: tech
+    data_id: tokenizers
+    style: tech_icon
+    subject: >-
+      The letters "tok" in a chunky mono font, with a small vertical
+      divider line suggesting text being split into pieces. Cyan accent.
+      Represents text tokenization — splitting strings into model tokens.
+
+  # ── Weight Formats ────────────────────────────────────────────
+  - filename: icon-weights.png
+    category: tech
+    data_id: weight-formats
+    style: tech_icon
+    subject: >-
+      A bold letter "W" with a small grid pattern overlay suggesting
+      tensor data. Purple accent. Represents model weight files and
+      safe tensor distribution formats.
+
+  # ── Embeddings ────────────────────────────────────────────────
+  - filename: icon-embeddings.png
+    category: tech
+    data_id: embeddings
+    style: tech_icon
+    subject: >-
+      A small cluster of dots arranged in a 3D-perspective grid,
+      suggesting a vector space. Magenta accent. Represents embedding
+      vectors and semantic similarity.
+
+  # ── Chat Templates ────────────────────────────────────────────
+  - filename: icon-chat-templates.png
+    category: tech
+    data_id: chat-templates
+    style: tech_icon
+    subject: >-
+      Two stacked speech bubbles — one with a small user icon hint,
+      one with a small robot/assistant hint. Blue accent. Represents
+      multi-turn conversation formatting.
+
   # ── Inference API ────────────────────────────────────────────
   - filename: icon-inference-api.png
     category: tech
@@ -55,16 +95,6 @@ images:
       A bold "f(x)" function symbol — the letter f with parentheses
       and an x. Orange accent. Represents structured tool invocation
       by a language model.
-
-  # ── Tool Schemas ────────────────────────────────────────────
-  - filename: icon-tool-schemas.png
-    category: tech
-    data_id: tool-schemas
-    style: tech_icon
-    subject: >-
-      A pair of curly braces "{ }" with a small nested key-value hint
-      inside. Blue accent. Represents machine-readable JSON / OpenAPI
-      schema contracts.
 
   # ── MCP ─────────────────────────────────────────────────────
   - filename: icon-mcp.png
@@ -135,6 +165,97 @@ images:
       A small ID badge with a key-hole or lock symbol. White badge on
       dark background. Gold accent on the lock. Represents
       cryptographic agent identity on the web.
+
+  # ── MCP Apps ──────────────────────────────────────────────────
+  - filename: icon-mcp-apps.png
+    category: tech
+    data_id: mcp-apps
+    style: tech_icon
+    subject: >-
+      A small application window with a plug symbol inside — combining
+      the UI frame with the MCP connector concept. Teal accent.
+      Represents interactive UI surfaces for MCP tool servers.
+
+  # ── Standard Tool Surfaces ────────────────────────────────────
+  - filename: icon-tool-surfaces.png
+    category: tech
+    data_id: standard-tool-surfaces
+    style: tech_icon
+    subject: >-
+      Three small stacked icons: a browser window, a terminal prompt,
+      and a code file. Gray with white outlines. Represents the
+      canonical action surfaces: browser, CLI, and code.
+
+  # ── Skill Signing ─────────────────────────────────────────────
+  - filename: icon-skill-security.png
+    category: tech
+    data_id: skill-security
+    style: tech_icon
+    subject: >-
+      A padlock icon with a small checkmark or seal. Gold accent on
+      the lock. Represents signed and verified skill packages with
+      provenance metadata.
+
+  # ── Agent Loop ────────────────────────────────────────────────
+  - filename: icon-agent-loop.png
+    category: tech
+    data_id: agent-loop
+    style: tech_icon
+    subject: >-
+      A circular arrow forming a loop with a small play/execute symbol
+      in the center. Orange accent. Represents the iterative agent
+      execution cycle: prompt, act, observe, repeat.
+
+  # ── Agent Audit Traces ────────────────────────────────────────
+  - filename: icon-audit.png
+    category: tech
+    data_id: agent-audit
+    style: tech_icon
+    subject: >-
+      A small clipboard or log sheet with horizontal lines and a
+      magnifying glass overlay. Gray with white accents. Represents
+      portable audit trails and run records.
+
+  # ── Signed Intent Mandates ────────────────────────────────────
+  - filename: icon-mandate.png
+    category: tech
+    data_id: intent-mandates
+    style: tech_icon
+    subject: >-
+      A document icon with a signature line and a small seal or stamp
+      at the bottom. Gold accent on the seal. Represents cryptographic
+      consent and authorization tokens.
+
+  # ── Agent Registries ──────────────────────────────────────────
+  - filename: icon-registry.png
+    category: tech
+    data_id: agent-registries
+    style: tech_icon
+    subject: >-
+      A directory or phonebook icon with small agent/robot symbols
+      listed inside. Blue accent. Represents discovery, routing, and
+      capability directories for agents.
+
+  # ── Agent Lingua Franca ───────────────────────────────────────
+  - filename: icon-lingua.png
+    category: tech
+    data_id: agent-lingua
+    style: tech_icon
+    subject: >-
+      The letters "abc" with a compression or shorthand symbol — arrows
+      pointing inward suggesting compression. Cyan accent. Represents
+      token-efficient inter-agent communication language.
+
+  # ── Human Context Protocol ──────────────────────────────────────
+  - filename: icon-hcp.png
+    category: tech
+    data_id: human-context-protocol
+    style: tech_icon
+    subject: >-
+      A stylized human silhouette or head outline with a memory/database
+      symbol (small cylinder or stacked cards) beside it. Teal accent.
+      Represents portable user preferences and context that travel with
+      the user across agents.
 
 
 # ════════════════════════════════════════════════════════════════

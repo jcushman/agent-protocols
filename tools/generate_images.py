@@ -33,8 +33,6 @@ from __future__ import annotations
 
 import argparse
 import base64
-import hashlib
-import json
 import os
 import re
 import sys
@@ -50,7 +48,6 @@ TOOLS_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = TOOLS_DIR.parent
 IMAGES_YAML = TOOLS_DIR / "images.yaml"
 OUTPUT_DIR = PROJECT_ROOT / "images"
-CACHE_DIR = TOOLS_DIR / ".cache"
 DATA_YAML = PROJECT_ROOT / "data.yaml"
 
 # ── OpenRouter API ─────────────────────────────────────────────────
@@ -110,35 +107,6 @@ def build_prompts(manifest: dict) -> list[dict]:
             rec["actor_type"] = entry["actor_type"]
         results.append(rec)
     return results
-
-
-# ════════════════════════════════════════════════════════════════════
-#  Cache helpers
-# ════════════════════════════════════════════════════════════════════
-
-
-def cache_key(prompt: str, model: str, ref_filenames: list[str]) -> str:
-    """Deterministic hash for a generation call."""
-    blob = json.dumps(
-        {"prompt": prompt, "model": model, "refs": sorted(ref_filenames)},
-        sort_keys=True,
-    )
-    return hashlib.sha1(blob.encode()).hexdigest()
-
-
-def read_cached(key: str) -> bytes | None:
-    """Return cached image bytes if they exist, else None."""
-    img_path = CACHE_DIR / f"{key}.png"
-    if img_path.exists():
-        return img_path.read_bytes()
-    return None
-
-
-def write_cache(key: str, data: bytes, metadata: dict) -> None:
-    """Persist image bytes + metadata JSON to the cache dir."""
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    (CACHE_DIR / f"{key}.png").write_bytes(data)
-    (CACHE_DIR / f"{key}.json").write_text(json.dumps(metadata, indent=2))
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -342,11 +310,6 @@ def main() -> None:
         help="Regenerate even if the output file already exists",
     )
     parser.add_argument(
-        "--no-cache",
-        action="store_true",
-        help="Skip the on-disk cache (always call the API)",
-    )
-    parser.add_argument(
         "--model",
         default=DEFAULT_MODEL,
         help=f"OpenRouter model to use (default: {DEFAULT_MODEL})",
@@ -422,29 +385,6 @@ def main() -> None:
                     recent_refs.pop(0)
                 continue
 
-            # Check on-disk cache
-            ref_names = [r["filename"] for r in recent_refs]
-            ck = cache_key(p["prompt"], args.model, ref_names)
-
-            if not args.no_cache:
-                cached = read_cached(ck)
-                if cached is not None:
-                    dest.write_bytes(cached)
-                    console.print(
-                        f"[dim]{i}/{len(targets)}[/dim] "
-                        f"[green]cached[/green] {p['filename']}"
-                    )
-                    recent_refs.append(
-                        {
-                            "data_url": _image_to_data_url(cached),
-                            "description": p["prompt"][:200],
-                            "filename": p["filename"],
-                        }
-                    )
-                    if len(recent_refs) > MAX_STYLE_REFS:
-                        recent_refs.pop(0)
-                    continue
-
             # ── Generate via OpenRouter ────────────────────────────
             n_refs = len(recent_refs)
             ref_note = f" (+{n_refs} style ref{'s' if n_refs != 1 else ''})" if n_refs else ""
@@ -461,14 +401,8 @@ def main() -> None:
                 recent_refs[-MAX_STYLE_REFS:],
             )
 
-            # Save to output + cache
+            # Save to output
             dest.write_bytes(image_bytes)
-            write_cache(ck, image_bytes, {
-                "prompt": p["prompt"],
-                "model": args.model,
-                "filename": p["filename"],
-                "ref_filenames": ref_names,
-            })
 
             console.print(
                 f"         [green]✓[/green] saved → "
