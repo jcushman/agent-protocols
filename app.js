@@ -12,12 +12,17 @@ let scrollObserver = null;
 let fadeTimeout = null;
 let scrollRafId = null;
 const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+const unlockedIds = new Set();
 
-// ── Grid Constants ────────────────────────────────────────────────
-const CELL_W = 260;
-const CELL_H = 100;
-const BOX_W = 204;
-const BOX_H = 80;
+// ── Layout Configuration ─────────────────────────────────────────
+const cfg = {
+  boxW: 204,
+  boxH: 80,
+  gapX: 100,
+  gapY: 30,
+  marginX: 60,
+  marginY: 60,
+};
 
 // ── Init ──────────────────────────────────────────────────────────
 async function init() {
@@ -40,7 +45,7 @@ async function init() {
 function route() {
   cleanup();
   const hash = window.location.hash.replace(/^#\/?/, '');
-  if (hash && DATA.protocols.find(p => p.id === hash)) {
+  if (hash && DATA.technologies.find(t => t.id === hash)) {
     showDetail(hash);
   } else {
     showTree();
@@ -67,6 +72,396 @@ function navigateTo(hash) {
   window.location.hash = hash ? `#${hash}` : '#';
 }
 
+// ── Layout Helpers ────────────────────────────────────────────────
+
+function isLocked(tech) {
+  return tech.unlock && tech.unlock.state === 'locked' && !unlockedIds.has(tech.id);
+}
+
+// Helper: get array of parent IDs (supports both parent and parents in layout)
+function getLayoutParentIds(n) {
+  if (n.layout.parents && n.layout.parents.length) return n.layout.parents;
+  if (n.layout.parent) return [n.layout.parent];
+  return [];
+}
+
+// Resolve column positions from parent + offset relationships
+// Nodes specify layout: { parent: "parent-id", offset: 2 } where offset defaults to 1
+// Root nodes (no parent) get column 0
+function resolveColumns(nodes) {
+  const byId = new Map(nodes.map(n => [n.id, n]));
+  const resolved = new Map(); // id -> column
+  
+  function getCol(nodeId) {
+    if (resolved.has(nodeId)) return resolved.get(nodeId);
+    
+    const node = byId.get(nodeId);
+    if (!node) return 0;
+    
+    const parentIds = getLayoutParentIds(node);
+    if (parentIds.length === 0) {
+      // Root node
+      resolved.set(nodeId, 0);
+      return 0;
+    }
+    
+    // Get the first parent's column (use first parent for column calculation)
+    const parentCol = getCol(parentIds[0]);
+    const offset = node.layout.offset !== undefined ? node.layout.offset : 1;
+    const col = parentCol + offset;
+    resolved.set(nodeId, col);
+    return col;
+  }
+  
+  // Resolve all nodes
+  nodes.forEach(n => getCol(n.id));
+  
+  // Store resolved columns back on layout objects for use elsewhere
+  nodes.forEach(n => {
+    n.layout.col = resolved.get(n.id);
+  });
+  
+  return resolved;
+}
+
+// Compute positions using column-based layout algorithm
+// Algorithm:
+//   1. Resolve columns from parent + offset relationships
+//   2. Create placeholders for edges that skip columns
+//   3. Compute "subtree height" for each node (right-to-left pass)
+//   4. Position nodes left-to-right, spacing siblings by subtree height
+//   5. Children stay centered on parents; parents spread to accommodate
+//   6. Multi-parent nodes center on the centroid of all parents
+function computePositions(nodes) {
+  // First, resolve column positions from parent + offset
+  resolveColumns(nodes);
+  
+  const byId = new Map(nodes.map((n, i) => [n.id, { ...n, inputIdx: i }]));
+  
+  // Step 1: Create placeholders for edges that span multiple columns
+  // Key insight: create separate placeholders for each "cluster" of skip-col children
+  // A new cluster starts when there's a real node between consecutive skip-col destinations
+  
+  const placeholders = [];
+  const placeholderMap = new Map(); // "parentId-col-cluster" -> placeholder
+  const nodeToPlaceholderCluster = new Map(); // "nodeId-parentId-col" -> cluster index
+  
+  // First, gather all skip-column edges grouped by (parent, intermediate col)
+  const skipEdgeGroups = new Map();
+  
+  nodes.forEach((n, inputIdx) => {
+    const parentIds = getLayoutParentIds(n);
+    for (const pid of parentIds) {
+      const parentNode = byId.get(pid);
+      if (!parentNode || n.layout.col <= parentNode.layout.col + 1) continue;
+      
+      // This edge needs placeholders at each intermediate column
+      for (let col = parentNode.layout.col + 1; col < n.layout.col; col++) {
+        const groupKey = `${pid}-${col}`;
+        if (!skipEdgeGroups.has(groupKey)) {
+          skipEdgeGroups.set(groupKey, { parentId: pid, col, children: [] });
+        }
+        skipEdgeGroups.get(groupKey).children.push({ node: n, inputIdx });
+      }
+    }
+  });
+  
+  // Also collect real nodes at each column for cluster detection
+  const realNodesAtCol = new Map();
+  nodes.forEach((n, inputIdx) => {
+    if (!realNodesAtCol.has(n.layout.col)) realNodesAtCol.set(n.layout.col, []);
+    realNodesAtCol.get(n.layout.col).push({ node: n, inputIdx });
+  });
+  
+  // Now process each group to create clustered placeholders
+  for (const [groupKey, group] of skipEdgeGroups) {
+    const { parentId, col, children } = group;
+    const realNodes = realNodesAtCol.get(col) || [];
+    
+    // Sort children by inputIdx
+    children.sort((a, b) => a.inputIdx - b.inputIdx);
+    
+    // Sort real nodes by inputIdx  
+    const sortedRealNodes = [...realNodes].sort((a, b) => a.inputIdx - b.inputIdx);
+    
+    // Assign cluster indices: increment cluster when a real node appears between consecutive children
+    let clusterIdx = 0;
+    let realNodePointer = 0;
+    
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i];
+      
+      // Check if any real node comes between this child and the previous one
+      if (i > 0) {
+        const prevChildIdx = children[i - 1].inputIdx;
+        const currChildIdx = child.inputIdx;
+        
+        // Count real nodes between prev and curr
+        while (realNodePointer < sortedRealNodes.length && 
+               sortedRealNodes[realNodePointer].inputIdx < currChildIdx) {
+          if (sortedRealNodes[realNodePointer].inputIdx > prevChildIdx) {
+            // Found a real node between prev and curr - start new cluster
+            clusterIdx++;
+            break;
+          }
+          realNodePointer++;
+        }
+      }
+      
+      // Record which cluster this node belongs to for this parent-col combo
+      nodeToPlaceholderCluster.set(`${child.node.id}-${parentId}-${col}`, clusterIdx);
+      
+      // Create placeholder for this cluster if it doesn't exist
+      const phKey = `${parentId}-${col}-${clusterIdx}`;
+      if (!placeholderMap.has(phKey)) {
+        const prevCol = col - 1;
+        const prevPhKey = `${parentId}-${prevCol}-${clusterIdx}`;
+        const parentNode = byId.get(parentId);
+        
+        placeholders.push({
+          id: `ph-${phKey}`,
+          layout: { col: col },
+          parent: col === parentNode.layout.col + 1 ? parentId : `ph-${prevPhKey}`,
+          isPlaceholder: true,
+          inputIdx: child.inputIdx, // Use first child's inputIdx for positioning
+        });
+        placeholderMap.set(phKey, placeholders[placeholders.length - 1]);
+      }
+    }
+  }
+  
+  // Compute layoutParents: for each node, list of layout parent IDs
+  // If node skips columns, use the cluster-specific placeholder in col-1 for that parent
+  const layoutParents = new Map();
+  nodes.forEach(n => {
+    const parentIds = getLayoutParentIds(n);
+    if (parentIds.length === 0) {
+      layoutParents.set(n.id, []);
+    } else {
+      const lps = parentIds.map(pid => {
+        const parentNode = byId.get(pid);
+        if (parentNode && n.layout.col > parentNode.layout.col + 1) {
+          // Look up the cluster index for this node-parent-col combo
+          const clusterKey = `${n.id}-${pid}-${n.layout.col - 1}`;
+          const clusterIdx = nodeToPlaceholderCluster.get(clusterKey) || 0;
+          return `ph-${pid}-${n.layout.col - 1}-${clusterIdx}`;
+        }
+        return pid;
+      });
+      layoutParents.set(n.id, lps);
+    }
+  });
+  
+  const allItems = [
+    ...nodes.map((n, i) => ({ ...n, inputIdx: i })),
+    ...placeholders
+  ];
+  
+  const columns = new Map();
+  allItems.forEach(item => {
+    const col = item.layout.col;
+    if (!columns.has(col)) columns.set(col, []);
+    columns.get(col).push(item);
+  });
+  
+  // Sort each column by inputIdx to preserve input order
+  columns.forEach(items => items.sort((a, b) => a.inputIdx - b.inputIdx));
+  
+  const sortedCols = [...columns.keys()].sort((a, b) => a - b);
+  const maxCol = Math.max(...sortedCols);
+  
+  // Step 2: Build children map (parent -> children)
+  const childrenOf = new Map();
+  allItems.forEach(item => {
+    const lps = layoutParents.get(item.id) || (item.parent ? [item.parent] : []);
+    for (const pid of lps) {
+      if (!childrenOf.has(pid)) childrenOf.set(pid, []);
+      childrenOf.get(pid).push(item);
+    }
+  });
+  
+  // Step 3: Compute subtree height for each node (right-to-left)
+  // For multi-parent children, they are positioned separately (not in subtree calc)
+  const subtreeHeight = new Map();
+  
+  for (let col = maxCol; col >= 0; col--) {
+    const items = columns.get(col) || [];
+    for (const item of items) {
+      const children = childrenOf.get(item.id) || [];
+      // Filter to children with this as their ONLY layout parent
+      const singleParentChildren = children.filter(c => {
+        const lps = layoutParents.get(c.id) || (c.parent ? [c.parent] : []);
+        return lps.length === 1;
+      });
+      
+      if (singleParentChildren.length === 0) {
+        subtreeHeight.set(item.id, cfg.boxH);
+      } else {
+        const childHeights = singleParentChildren.map(c => subtreeHeight.get(c.id) || cfg.boxH);
+        const totalHeight = childHeights.reduce((sum, h) => sum + h, 0) + (singleParentChildren.length - 1) * cfg.gapY;
+        subtreeHeight.set(item.id, totalHeight);
+      }
+    }
+  }
+  
+  // Step 4: Position nodes left-to-right
+  const relY = new Map();
+  
+  for (const col of sortedCols) {
+    const items = columns.get(col);
+    
+    // Separate items: single-parent (grouped by parent) vs multi-parent (own position)
+    const singleParentItems = [];
+    const multiParentItems = [];
+    
+    items.forEach(item => {
+      const lps = layoutParents.get(item.id) || (item.parent ? [item.parent] : []);
+      if (lps.length <= 1) {
+        singleParentItems.push(item);
+      } else {
+        multiParentItems.push(item);
+      }
+    });
+    
+    // Group single-parent items by their parent
+    const byParent = new Map();
+    singleParentItems.forEach(item => {
+      const lps = layoutParents.get(item.id) || (item.parent ? [item.parent] : []);
+      const pid = lps[0] || "__root__";
+      if (!byParent.has(pid)) byParent.set(pid, []);
+      byParent.get(pid).push(item);
+    });
+    
+    // Position single-parent groups centered around their parent
+    for (const [pid, group] of byParent) {
+      const parentCenterY = (pid !== "__root__" && relY.has(pid)) ? relY.get(pid) : 0;
+      
+      const heights = group.map(item => subtreeHeight.get(item.id) || cfg.boxH);
+      const totalSpan = heights.reduce((sum, h) => sum + h, 0) + (group.length - 1) * cfg.gapY;
+      
+      let currentY = parentCenterY - totalSpan / 2;
+      group.forEach((item, i) => {
+        const h = heights[i];
+        relY.set(item.id, currentY + h / 2);
+        currentY += h + cfg.gapY;
+      });
+    }
+    
+    // Position multi-parent items centered on centroid of all parents
+    multiParentItems.forEach(item => {
+      const lps = layoutParents.get(item.id) || [];
+      const parentYs = lps.map(pid => relY.get(pid)).filter(y => y !== undefined);
+      if (parentYs.length > 0) {
+        const centroidY = parentYs.reduce((sum, y) => sum + y, 0) / parentYs.length;
+        relY.set(item.id, centroidY);
+      } else {
+        relY.set(item.id, 0);
+      }
+    });
+    
+    // Collision resolution: sort ALL items by inputIdx
+    const allColItems = [...items].sort((a, b) => a.inputIdx - b.inputIdx);
+    
+    // Push items down if they overlap with previous
+    for (let i = 1; i < allColItems.length; i++) {
+      const prev = allColItems[i - 1];
+      const curr = allColItems[i];
+      
+      const prevBottom = relY.get(prev.id) + (subtreeHeight.get(prev.id) || cfg.boxH) / 2;
+      const currTop = relY.get(curr.id) - (subtreeHeight.get(curr.id) || cfg.boxH) / 2;
+      const overlap = prevBottom + cfg.gapY - currTop;
+      
+      if (overlap > 0) {
+        for (let j = i; j < allColItems.length; j++) {
+          relY.set(allColItems[j].id, relY.get(allColItems[j].id) + overlap);
+        }
+      }
+    }
+  }
+  
+  // Step 5: Convert relative positions to absolute canvas positions
+  let minRelY = Infinity;
+  relY.forEach(y => { minRelY = Math.min(minRelY, y); });
+  
+  const offsetY = cfg.marginY + cfg.boxH / 2 - minRelY;
+  
+  const pos = new Map();
+  allItems.forEach(item => {
+    const centerY = relY.get(item.id);
+    const x = cfg.marginX + item.layout.col * (cfg.boxW + cfg.gapX);
+    const y = centerY + offsetY - cfg.boxH / 2;
+    pos.set(item.id, {
+      x, y,
+      col: item.layout.col,
+      isPlaceholder: item.isPlaceholder,
+      centerY: centerY + offsetY
+    });
+  });
+  
+  return { pos, nodeToPlaceholderCluster };
+}
+
+// Edge routing helpers
+function midRight(p) { return { x: p.x + cfg.boxW, y: p.centerY }; }
+function midLeft(p)  { return { x: p.x, y: p.centerY }; }
+
+function betweenColsX(colA, colB) {
+  const xRightA = cfg.marginX + colA * (cfg.boxW + cfg.gapX) + cfg.boxW;
+  const xLeftB  = cfg.marginX + colB * (cfg.boxW + cfg.gapX);
+  return (xRightA + xLeftB) / 2;
+}
+
+function routeEdge(parentNode, childNode, pos, nodeToPlaceholderCluster) {
+  const p = pos.get(parentNode.id);
+  const c = pos.get(childNode.id);
+  const S = midRight(p);
+  const E = midLeft(c);
+  
+  const pts = [S];
+  
+  // Collect waypoints: placeholders in intermediate columns (cluster-specific)
+  const waypoints = [];
+  for (let col = p.col + 1; col < c.col; col++) {
+    // Look up the cluster index for this specific edge
+    const clusterKey = `${childNode.id}-${parentNode.id}-${col}`;
+    const clusterIdx = nodeToPlaceholderCluster.get(clusterKey) || 0;
+    const phId = `ph-${parentNode.id}-${col}-${clusterIdx}`;
+    if (pos.has(phId)) {
+      waypoints.push(pos.get(phId));
+    }
+  }
+  
+  if (waypoints.length === 0) {
+    // Direct connection
+    const xHop = betweenColsX(p.col, c.col);
+    pts.push({ x: xHop, y: S.y });
+    pts.push({ x: xHop, y: E.y });
+  } else {
+    // Route through placeholders
+    let prevY = S.y;
+    
+    for (let i = 0; i < waypoints.length; i++) {
+      const wp = waypoints[i];
+      const xHop = betweenColsX(wp.col - 1, wp.col);
+      pts.push({ x: xHop, y: prevY });
+      pts.push({ x: xHop, y: wp.centerY });
+      prevY = wp.centerY;
+    }
+    
+    const lastWp = waypoints[waypoints.length - 1];
+    const xHop = betweenColsX(lastWp.col, c.col);
+    pts.push({ x: xHop, y: prevY });
+    pts.push({ x: xHop, y: E.y });
+  }
+  
+  pts.push(E);
+  return pts;
+}
+
+function polylinePath(points) {
+  return points.map((pt, i) => (i === 0 ? `M ${pt.x},${pt.y}` : `L ${pt.x},${pt.y}`)).join(" ");
+}
+
 // ================================================================
 //  TREE VIEW
 // ================================================================
@@ -76,44 +471,62 @@ function showTree() {
   currentProtocolId = null;
   document.title = DATA.title;
 
-  const protocols = DATA.protocols;
-  const maxCol = Math.max(...protocols.map(p => p.tree.col));
-  const maxRow = Math.max(...protocols.map(p => p.tree.row));
-  const cols = maxCol + 1;
-  const rows = maxRow + 1;
-  const gridW = cols * CELL_W;
-  const gridH = rows * CELL_H;
+  const techs = DATA.technologies;
+  const byId = new Map(techs.map(t => [t.id, t]));
+  const { pos, nodeToPlaceholderCluster } = computePositions(techs);
 
-  // Build era labels
-  const erasHtml = DATA.eras.map(e =>
-    `<div class="tree-era" style="grid-column:${e.col + 1}">${escapeHtml(e.label)}</div>`
-  ).join('');
+  // DEBUG: Log layout info
+  console.group('Tree Layout Debug');
+  console.log('Technologies:', techs.map(t => ({
+    id: t.id,
+    col: t.layout.col,
+    parent: t.layout.parent,
+    parents: t.layout.parents,
+  })));
+  console.log('Positions:', [...pos.entries()].map(([id, p]) => ({
+    id,
+    col: p.col,
+    x: p.x,
+    y: p.y,
+    isPlaceholder: p.isPlaceholder,
+  })));
+  console.groupEnd();
 
-  // Build grid cells (empty placeholders + nodes)
-  let cellsHtml = '';
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const proto = protocols.find(p => p.tree.col === c && p.tree.row === r);
-      if (proto) {
-        cellsHtml += `
-          <div class="tree-cell" style="grid-column:${c + 1};grid-row:${r + 1}">
-            <div class="tree-node" tabindex="0" role="button"
-                 data-id="${proto.id}"
-                 aria-label="${escapeHtml(proto.title)}: ${escapeHtml(proto.tagline)}">
-              <div class="node-header">
-                <div class="node-icon" aria-hidden="true">${escapeHtml(proto.icon_alt)}</div>
-                <div class="node-title">${escapeHtml(proto.title)}</div>
-              </div>
-              <div class="node-tagline">${escapeHtml(proto.tagline)}</div>
-            </div>
-          </div>`;
-      } else {
-        cellsHtml += `<div class="tree-cell" style="grid-column:${c + 1};grid-row:${r + 1}"></div>`;
-      }
-    }
-  }
+  // Calculate wrapper dimensions from positions
+  let maxX = 0, maxY = 0;
+  pos.forEach(p => {
+    if (p.isPlaceholder) return;
+    maxX = Math.max(maxX, p.x + cfg.boxW);
+    maxY = Math.max(maxY, p.y + cfg.boxH);
+  });
+  const wrapperW = maxX + cfg.marginX;
+  const wrapperH = maxY + cfg.marginY;
 
-  // Build SVG connections
+  // Build node HTML (absolutely positioned)
+  let nodesHtml = '';
+  techs.forEach(tech => {
+    const p = pos.get(tech.id);
+    const locked = isLocked(tech);
+    const lockedClass = locked ? ' node-locked' : '';
+
+    const iconHtml = tech.icon
+      ? `<img src="${escapeHtml(tech.icon)}" alt="${escapeHtml(tech.icon_alt)}" class="node-icon-img">`
+      : escapeHtml(tech.icon_alt);
+
+    nodesHtml += `
+      <div class="tree-node${lockedClass}" tabindex="0" role="button"
+           data-id="${tech.id}"
+           aria-label="${escapeHtml(tech.title)}: ${escapeHtml(tech.tagline)}"
+           style="left:${p.x}px;top:${p.y}px;width:${cfg.boxW}px;height:${cfg.boxH}px;">
+        <div class="node-header">
+          <div class="node-icon" aria-hidden="true">${iconHtml}</div>
+          <div class="node-title">${escapeHtml(tech.title)}</div>
+        </div>
+        <div class="node-tagline">${escapeHtml(tech.tagline)}</div>
+      </div>`;
+  });
+
+  // Build SVG connections using edge routing (supports multiple parents)
   let svgPaths = '';
   svgPaths += `<defs>
     <marker id="ah" markerWidth="10" markerHeight="8" refX="10" refY="4" orient="auto">
@@ -121,36 +534,43 @@ function showTree() {
     </marker>
   </defs>`;
 
-  protocols.forEach(proto => {
-    proto.tree.depends_on.forEach(depId => {
-      const dep = protocols.find(p => p.id === depId);
-      if (!dep) return;
-      const x1 = dep.tree.col * CELL_W + (CELL_W + BOX_W) / 2;
-      const y1 = dep.tree.row * CELL_H + CELL_H / 2;
-      const x2 = proto.tree.col * CELL_W + (CELL_W - BOX_W) / 2;
-      const y2 = proto.tree.row * CELL_H + CELL_H / 2;
-      const midX = (x1 + x2) / 2;
-      svgPaths += `<path d="M${x1},${y1} H${midX} V${y2} H${x2}" marker-end="url(#ah)"/>`;
-    });
+  // DEBUG: Log edges being drawn
+  console.group('Edges Debug');
+  techs.forEach(tech => {
+    const parentIds = getLayoutParentIds(tech);
+    for (const pid of parentIds) {
+      const parentNode = byId.get(pid);
+      if (!parentNode) continue;
+      
+      const pts = routeEdge(parentNode, tech, pos, nodeToPlaceholderCluster);
+      console.log(`Edge: ${pid} → ${tech.id}`, { 
+        parentCol: parentNode.layout.col, 
+        childCol: tech.layout.col,
+        points: pts 
+      });
+      svgPaths += `<path d="${polylinePath(pts)}" marker-end="url(#ah)"/>`;
+    }
   });
+  console.groupEnd();
 
-  // Build group outlines
-  let groupsHtml = '';
-  DATA.groups.forEach(group => {
-    const members = protocols.filter(p => group.members.includes(p.id));
+  // Build cluster outlines (computed from member bounding boxes)
+  let clustersHtml = '';
+  (DATA.clusters || []).forEach(cluster => {
+    const members = techs.filter(t => cluster.members.includes(t.id));
     if (!members.length) return;
-    const minCol = Math.min(...members.map(m => m.tree.col));
-    const maxCol = Math.max(...members.map(m => m.tree.col));
-    const minRow = Math.min(...members.map(m => m.tree.row));
-    const maxRow = Math.max(...members.map(m => m.tree.row));
-    const pad = 10;
-    const x = minCol * CELL_W + (CELL_W - BOX_W) / 2 - pad;
-    const y = minRow * CELL_H + (CELL_H - BOX_H) / 2 - pad;
-    const w = (maxCol - minCol) * CELL_W + BOX_W + pad * 2;
-    const h = (maxRow - minRow) * CELL_H + BOX_H + pad * 2;
-    groupsHtml += `
-      <div class="tree-group" style="left:${x}px;top:${y}px;width:${w}px;height:${h}px">
-        <span class="tree-group-label">${escapeHtml(group.label)}</span>
+    const clPad = 14;
+    const memberPos = members.map(m => pos.get(m.id));
+    const cMinX = Math.min(...memberPos.map(p => p.x));
+    const cMaxX = Math.max(...memberPos.map(p => p.x));
+    const cMinY = Math.min(...memberPos.map(p => p.y));
+    const cMaxY = Math.max(...memberPos.map(p => p.y));
+    const cx = cMinX - clPad;
+    const cy = cMinY - clPad;
+    const cw = (cMaxX - cMinX) + cfg.boxW + clPad * 2;
+    const ch = (cMaxY - cMinY) + cfg.boxH + clPad * 2;
+    clustersHtml += `
+      <div class="tree-group" style="left:${cx}px;top:${cy}px;width:${cw}px;height:${ch}px">
+        <span class="tree-group-label">${escapeHtml(cluster.label)}</span>
       </div>`;
   });
 
@@ -161,43 +581,52 @@ function showTree() {
         <p>${escapeHtml(DATA.subtitle)}</p>
       </header>
       <div class="tree-container">
-        <div class="tree-eras" style="display:grid;grid-template-columns:repeat(${cols},${CELL_W}px)">
-          ${erasHtml}
-        </div>
-        <div class="tree-wrapper" style="width:${gridW}px;height:${gridH}px">
-          <svg class="tree-svg" width="${gridW}" height="${gridH}" viewBox="0 0 ${gridW} ${gridH}">
+        <div class="tree-wrapper" style="width:${wrapperW}px;height:${wrapperH}px">
+          <svg class="tree-svg" width="${wrapperW}" height="${wrapperH}" viewBox="0 0 ${wrapperW} ${wrapperH}">
             ${svgPaths}
           </svg>
-          ${groupsHtml}
-          <div class="tree-grid" style="grid-template-columns:repeat(${cols},${CELL_W}px);grid-template-rows:repeat(${rows},${CELL_H}px)">
-            ${cellsHtml}
-          </div>
+          ${clustersHtml}
+          ${nodesHtml}
         </div>
       </div>
-      <footer class="tree-footer">Click a protocol to explore how it works</footer>
+      <footer class="tree-footer">Click a node to explore how it works</footer>
     </div>`;
 
-  // Center the tree scroll on the root node
+  // Center the scroll on the tree
   const treeContainer = document.querySelector('.tree-container');
   if (treeContainer) {
-    // Find the first protocol (root of the tree) and center on it
-    const rootProto = protocols.find(p => p.tree.depends_on.length === 0) || protocols[0];
-    const rootCenterX = rootProto.tree.col * CELL_W + CELL_W / 2;
     const wrapper = document.querySelector('.tree-wrapper');
     if (wrapper) {
-      const wrapperLeft = wrapper.offsetLeft;
-      const targetScroll = wrapperLeft + rootCenterX - treeContainer.clientWidth / 2;
+      const centerX = wrapperW / 2;
+      const targetScroll = centerX - treeContainer.clientWidth / 2;
       treeContainer.scrollLeft = Math.max(0, targetScroll);
     }
   }
 
-  // Attach click handlers
+  // Attach click handlers (unlock on first click, navigate on second)
   document.querySelectorAll('.tree-node').forEach(node => {
-    node.addEventListener('click', () => navigateTo(node.dataset.id));
+    function handleClick() {
+      const id = node.dataset.id;
+      const tech = techs.find(t => t.id === id);
+      if (tech && isLocked(tech)) {
+        // Unlock the node
+        unlockedIds.add(id);
+        node.classList.remove('node-locked');
+        node.classList.add('node-unlocking');
+        const overlay = node.querySelector('.unlock-overlay');
+        if (overlay) {
+          overlay.classList.add('unlock-fade');
+          overlay.addEventListener('animationend', () => overlay.remove(), { once: true });
+        }
+      } else {
+        navigateTo(id);
+      }
+    }
+    node.addEventListener('click', handleClick);
     node.addEventListener('keydown', e => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
-        navigateTo(node.dataset.id);
+        handleClick();
       }
     });
   });
@@ -207,98 +636,130 @@ function showTree() {
 //  DETAIL VIEW
 // ================================================================
 
-function showDetail(protocolId) {
+function showDetail(techId) {
   currentView = 'detail';
-  currentProtocolId = protocolId;
+  currentProtocolId = techId;
   activeSceneIndex = 0;
 
-  const proto = DATA.protocols.find(p => p.id === protocolId);
-  if (!proto) { navigateTo(''); return; }
+  const tech = DATA.technologies.find(t => t.id === techId);
+  if (!tech) { navigateTo(''); return; }
 
-  document.title = `${proto.title} — ${DATA.title}`;
+  // Auto-unlock if navigated directly via URL hash
+  if (tech.unlock && tech.unlock.state === 'locked') {
+    unlockedIds.add(techId);
+  }
 
-  const detail = proto.detail;
-  const scenes = proto.animation.scenes;
+  document.title = `${tech.title} — ${DATA.title}`;
 
-  // Steps HTML
-  const stepsHtml = scenes.map((scene, i) => `
-    <div class="step${i === 0 ? ' active' : ''}" data-scene="${i}">
-      <div class="step__content">
-        <div class="step__number">Step ${i + 1} of ${scenes.length}</div>
-        <div class="step__title">
-          ${escapeHtml(scene.title)}
-          ${scene.sparkle ? '<span class="step__sparkle" aria-label="Interoperable">&#10022;</span>' : ''}
+  const detail = tech.detail;
+  const hasAnimation = tech.animation && tech.animation.scenes && tech.animation.scenes.length > 0;
+
+  // Links bar
+  let linksHtml = '';
+  if (detail.links && detail.links.length) {
+    linksHtml = `<div class="detail-links">${detail.links.map(link =>
+      `<a href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer" class="detail-link">${escapeHtml(link.label)}</a>`
+    ).join('')}</div>`;
+  }
+
+  // How it works (scrollytelling animation) — skip if no animation
+  let animHtml = '';
+  if (hasAnimation) {
+    const scenes = tech.animation.scenes;
+    const stepsHtml = scenes.map((scene, i) => `
+      <div class="step${i === 0 ? ' active' : ''}" data-scene="${i}">
+        <div class="step__content">
+          <div class="step__number">Step ${i + 1} of ${scenes.length}</div>
+          <div class="step__title">
+            ${escapeHtml(scene.title)}
+            ${scene.sparkle ? '<span class="step__sparkle" aria-label="Interoperable">&#10022;</span>' : ''}
+          </div>
+          <div class="step__description">${escapeHtml(scene.description)}</div>
         </div>
-        <div class="step__description">${escapeHtml(scene.description)}</div>
       </div>
-    </div>
-  `).join('');
+    `).join('');
 
-  // Reduced‑motion: show all scenes stacked
+    animHtml = `
+      <div class="how-it-works detail-section">
+        <div class="section-label">How it works</div>
+        <div class="scrolly" id="scrolly">
+          <div class="scrolly__graphic" id="anim-stage">
+            <div class="anim-stage" id="anim-root"></div>
+          </div>
+          <div class="scrolly__steps" id="scrolly-steps">
+            ${stepsHtml}
+          </div>
+        </div>
+      </div>`;
+  }
+
+  // Virtuous cycle (array → <ul>)
+  let cycleHtml = '';
+  if (detail.virtuous_cycle && detail.virtuous_cycle.length) {
+    cycleHtml = `
+      <div class="detail-section">
+        <div class="section-label">The virtuous cycle</div>
+        <ul class="virtuous-cycle">
+          ${detail.virtuous_cycle.map(item => `<li>${escapeHtml(item)}</li>`).join('')}
+        </ul>
+      </div>`;
+  }
+
+  // Icon for header
+  const headerIconHtml = tech.icon
+    ? `<img src="${escapeHtml(tech.icon)}" alt="${escapeHtml(tech.icon_alt)}" class="header-icon-img">`
+    : escapeHtml(tech.icon_alt);
+
+  // Reduced-motion check
   const isReduced = prefersReducedMotion.matches;
 
   document.getElementById('app').innerHTML = `
     <div class="detail-page">
       <header class="detail-header">
         <button class="back-btn" onclick="navigateTo('')">&larr; Tree</button>
-        <div class="header-icon" aria-hidden="true">${escapeHtml(proto.icon_alt)}</div>
-        <h1>${escapeHtml(proto.title)}</h1>
+        <div class="header-icon" aria-hidden="true">${headerIconHtml}</div>
+        <h1>${escapeHtml(tech.title)}</h1>
       </header>
       <div class="detail-content">
         <div class="detail-hero">
-          <div class="tagline">${escapeHtml(proto.tagline)}</div>
+          <div class="tagline">${escapeHtml(tech.tagline)}</div>
         </div>
+
+        ${linksHtml}
 
         <div class="detail-section">
           <div class="section-label">What it solves</div>
           <div class="section-body">${escapeHtml(detail.what_it_solves)}</div>
         </div>
 
-        <div class="how-it-works detail-section">
-          <div class="section-label">How it works</div>
-          <div class="scrolly" id="scrolly">
-            <div class="scrolly__graphic" id="anim-stage">
-              <div class="anim-stage" id="anim-root"></div>
-            </div>
-            <div class="scrolly__steps" id="scrolly-steps">
-              ${stepsHtml}
-            </div>
-          </div>
-        </div>
+        ${animHtml}
 
         <div class="detail-section">
-          <div class="section-label">Why it&rsquo;s an open protocol</div>
-          <div class="section-body">${escapeHtml(detail.why_open)}</div>
+          <div class="section-label">How it&rsquo;s standardizing</div>
+          <div class="section-body">${escapeHtml(detail.how_its_standardizing)}</div>
         </div>
 
-        <div class="detail-section">
-          <div class="section-label">Where it came from</div>
-          <div class="section-body">${escapeHtml(detail.where_from)}</div>
-        </div>
-
-        <div class="detail-section">
-          <div class="section-label">Who maintains it</div>
-          <div class="section-body">${escapeHtml(detail.who_maintains)}</div>
-        </div>
+        ${cycleHtml}
       </div>
     </div>`;
 
-  // Initialize animation
-  initAnimation(proto);
+  // Initialize animation if present
+  if (hasAnimation) {
+    initAnimation(tech);
 
-  // Setup scroll observer (unless reduced motion or narrow viewport)
-  if (!isReduced && window.innerWidth > 768) {
-    setupScrollObserver(proto);
-  } else {
-    // In stacked mode, show first scene; clicking steps switches scenes
-    document.querySelectorAll('.step').forEach(step => {
-      step.addEventListener('click', () => {
-        const idx = parseInt(step.dataset.scene, 10);
-        transitionToScene(proto, idx);
-        document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
-        step.classList.add('active');
+    if (!isReduced && window.innerWidth > 768) {
+      setupScrollObserver(tech);
+    } else {
+      // Stacked mode: clicking steps switches scenes
+      document.querySelectorAll('.step').forEach(step => {
+        step.addEventListener('click', () => {
+          const idx = parseInt(step.dataset.scene, 10);
+          transitionToScene(tech, idx);
+          document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+          step.classList.add('active');
+        });
       });
-    });
+    }
   }
 
   // Scroll to top
@@ -309,18 +770,22 @@ function showDetail(protocolId) {
 //  ANIMATION ENGINE
 // ================================================================
 
-function initAnimation(proto) {
+function initAnimation(tech) {
   const root = document.getElementById('anim-root');
-  if (!root) return;
+  if (!root || !tech.animation) return;
 
-  const allActors = proto.animation.actors;
+  const allActors = tech.animation.actors;
 
   // Create persistent actor elements
   let actorsHtml = '<div class="anim-actors" id="anim-actors">';
   allActors.forEach(actor => {
+    const iconSrc = DATA.actor_icons && DATA.actor_icons[actor.type];
+    const iconContent = iconSrc
+      ? `<img src="${escapeHtml(iconSrc)}" alt="${escapeHtml(actorIconText(actor.type))}" class="actor-icon-img">`
+      : escapeHtml(actorIconText(actor.type));
     actorsHtml += `
       <div class="anim-actor" id="actor-${actor.id}" data-id="${actor.id}" style="opacity:0;">
-        <div class="actor-icon">${escapeHtml(actorIconText(actor.type))}</div>
+        <div class="actor-icon">${iconContent}</div>
         <div class="actor-label">${escapeHtml(actor.label)}</div>
       </div>`;
   });
@@ -332,15 +797,15 @@ function initAnimation(proto) {
   root.innerHTML = actorsHtml;
 
   // Show first scene
-  setActiveScene(proto, 0);
+  setActiveScene(tech, 0);
 }
 
-function setActiveScene(proto, index) {
+function setActiveScene(tech, index) {
   activeSceneIndex = index;
-  const scene = proto.animation.scenes[index];
+  const scene = tech.animation.scenes[index];
   if (!scene) return;
 
-  const allActors = proto.animation.actors;
+  const allActors = tech.animation.actors;
   const visibleIds = scene.actors_visible;
   const n = visibleIds.length;
 
@@ -410,11 +875,11 @@ function renderMessages(scene, visibleIds, numActors) {
 
 // ── Scroll-based Scene Switching ──────────────────────────────────
 
-function transitionToScene(proto, index) {
+function transitionToScene(tech, index) {
   if (index === activeSceneIndex) return;
 
   const root = document.getElementById('anim-root');
-  if (!root) { setActiveScene(proto, index); return; }
+  if (!root) { setActiveScene(tech, index); return; }
 
   // Cancel any pending transition and remove leftover overlay
   if (fadeTimeout) clearTimeout(fadeTimeout);
@@ -427,7 +892,6 @@ function transitionToScene(proto, index) {
   // Clone current content as a crossfade overlay
   const overlay = root.cloneNode(true);
   overlay.id = 'anim-crossfade';
-  // Strip IDs from clone so getElementById still finds the real elements
   overlay.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
   overlay.style.position = 'absolute';
   overlay.style.inset = '0';
@@ -441,7 +905,7 @@ function transitionToScene(proto, index) {
   root.querySelectorAll('.anim-actor').forEach(a => { a.style.transition = 'none'; });
 
   // Update the real content underneath the overlay
-  setActiveScene(proto, index);
+  setActiveScene(tech, index);
 
   // Restore actor transitions then fade out overlay to reveal new scene
   requestAnimationFrame(() => {
@@ -456,7 +920,7 @@ function transitionToScene(proto, index) {
   }, 550);
 }
 
-function setupScrollObserver(proto) {
+function setupScrollObserver(tech) {
   const graphic = document.querySelector('.scrolly__graphic');
   const steps = document.querySelectorAll('.step');
   if (!graphic || !steps.length) return;
@@ -474,7 +938,7 @@ function setupScrollObserver(proto) {
     });
 
     if (newIdx !== activeSceneIndex) {
-      transitionToScene(proto, newIdx);
+      transitionToScene(tech, newIdx);
       steps.forEach(s => s.classList.remove('active'));
       steps[newIdx].classList.add('active');
     }
@@ -505,7 +969,7 @@ function toggleDetail(id) {
   el.classList.toggle('expanded');
 }
 
-// ── Actor Icon Text ───────────────────────────────────────────────
+// ── Actor Icon Text (fallback when no image) ──────────────────────
 function actorIconText(type) {
   const icons = {
     app: 'APP',

@@ -55,7 +55,7 @@ DATA_YAML = PROJECT_ROOT / "data.yaml"
 
 # ── OpenRouter API ─────────────────────────────────────────────────
 OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
-DEFAULT_MODEL = "google/gemini-2.5-flash-image-preview"
+DEFAULT_MODEL = "google/gemini-3-pro-image-preview"
 
 # How many previously-generated images to include as style references
 MAX_STYLE_REFS = 3
@@ -221,7 +221,7 @@ def generate_image(
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
             "HTTP-Referer": "https://github.com/jcushman/agent-protocols",
-            "X-Title": "Agent Protocol Tech Tree — Image Generator",
+            "X-Title": "Agent Protocol Tech Tree - Image Generator",
         },
         json={
             "model": model,
@@ -453,42 +453,38 @@ def main() -> None:
                 f"[bold]{p['filename']}[/bold] generating…{ref_note}"
             )
 
-            try:
-                image_bytes = generate_image(
-                    client,
-                    api_key,
-                    p["prompt"],
-                    args.model,
-                    recent_refs[-MAX_STYLE_REFS:],
-                )
+            image_bytes = generate_image(
+                client,
+                api_key,
+                p["prompt"],
+                args.model,
+                recent_refs[-MAX_STYLE_REFS:],
+            )
 
-                # Save to output + cache
-                dest.write_bytes(image_bytes)
-                write_cache(ck, image_bytes, {
-                    "prompt": p["prompt"],
-                    "model": args.model,
+            # Save to output + cache
+            dest.write_bytes(image_bytes)
+            write_cache(ck, image_bytes, {
+                "prompt": p["prompt"],
+                "model": args.model,
+                "filename": p["filename"],
+                "ref_filenames": ref_names,
+            })
+
+            console.print(
+                f"         [green]✓[/green] saved → "
+                f"{dest.relative_to(PROJECT_ROOT)}"
+            )
+
+            # Add to rolling style refs
+            recent_refs.append(
+                {
+                    "data_url": _image_to_data_url(image_bytes),
+                    "description": p["prompt"][:200],
                     "filename": p["filename"],
-                    "ref_filenames": ref_names,
-                })
-
-                console.print(
-                    f"         [green]✓[/green] saved → "
-                    f"{dest.relative_to(PROJECT_ROOT)}"
-                )
-
-                # Add to rolling style refs
-                recent_refs.append(
-                    {
-                        "data_url": _image_to_data_url(image_bytes),
-                        "description": p["prompt"][:200],
-                        "filename": p["filename"],
-                    }
-                )
-                if len(recent_refs) > MAX_STYLE_REFS:
-                    recent_refs.pop(0)
-
-            except Exception as exc:
-                console.print(f"         [red]✗ {exc}[/red]")
+                }
+            )
+            if len(recent_refs) > MAX_STYLE_REFS:
+                recent_refs.pop(0)
 
     if args.patch_data:
         patch_data_yaml(all_prompts)
