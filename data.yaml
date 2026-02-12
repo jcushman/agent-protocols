@@ -9,69 +9,91 @@ details: |
   the standards they are converging on and why each layer came to be.
 
 
-# Clusters are decorative dashed-outline group boxes.
-# Each cluster can have an optional `description` (HTML) shown in a modal.
-clusters:
-  - id: c-foundations
-    label: Model building standards
-    members: [tokenizers, weight-formats, embeddings, chat-templates]
-    description: >-
-      These are the low-level file formats and conventions that let open weight model
-      move between training, distribution, and inference.
-      None were designed by a standards body; each emerged because model publishers
-      and runtime authors converged on the same artifacts.
-
-  - id: c-domain
-    label: Domain Protocols
-    members: [ucp, agent-identity]
-    description: >-
-      Domain protocols carry actual real-world semantics: shopping carts, identity
-      claims, payment flows. They show agent protocols becoming mature and specialized.
-
 # ── Tree ──────────────────────────────────────────────────────────────
 # Defines hierarchy and visual layout.  Nesting = parent → child.
 # extra_cols:     additional columns beyond default (first_parent_col + 1).
 # extra_parents:  additional parent connections drawn on the tree.
 # Column formula: first_parent_col + 1 + extra_cols (default 0); roots with no parents: 0.
 # Sibling order controls vertical positioning within a column.
+#
+# Clusters are first-class tree nodes with `cluster: true` and `items:`.
+# They render as dashed-outline group boxes containing their items.
+# Both clusters and their individual items can have parent/child arrows.
 
 tree:
-  - id: tokenizers
-  - id: weight-formats
-  - id: embeddings
-  - id: chat-templates
-  - id: inference-api
-    extra_parents: [tokenizers, weight-formats, embeddings, chat-templates]
+  - id: c-foundations
+    cluster: true
+    label: Model building standards
+    description: >-
+      These are the low-level file formats and conventions that let open weight model
+      move between training, distribution, and inference.
+      None were designed by a standards body; each emerged because model publishers
+      and runtime authors converged on the same artifacts.
+    items:
+      - id: tokenizers
+      - id: weight-formats
+      - id: embeddings
+      - id: chat-templates
     children:
-      - id: tool-calling
+      - id: inference-api
         children:
-          - id: mcp
+          - id: tool-calling
             children:
-              - id: mcp-apps
-          - id: standard-tool-surfaces
-            children:
-              - id: agents-md
-              - id: llms-txt
-          - id: agent-loop
-            extra_cols: 1
-            children:
-              - id: agent-skills
+              - id: mcp
                 children:
-                  - id: skill-security
-              - id: a2a
+                  - id: mcp-apps
+              - id: standard-tool-surfaces
                 children:
-                  - id: ucp
-                  - id: agent-identity
-                    children:
+              - id: agent-loop
+                extra_cols: 1
+                extra_parents: [standard-tools]
+                children:
+                  - id: c-context-management
+                    cluster: true
+                    display: node
+                    label: Context Management
+                    description: >-
+                      As agents engage more with the world, they need ways to fetch updated information
+                      about how to handle specific situations.
+                    items:
+                      - id: agents-md
+                      - id: llms-txt
+                      - id: agent-skills
+                        children:
+                          - id: agent-skills-discovery
+                          - id: agent-skills-registries
+                  - id: c-interagent
+                    cluster: true
+                    display: node
+                    label: Inter-agent Coordination
+                    description: >-
+                      The desire to automate large enterprises (or to sell services to them) drives
+                      protocols for agents within an enterprise to coordinate their work, potentially across vendors;
+                      analogous to existing service discovery layers within enterprises.
+                    items:
+                      - id: agent-card
+                        children:
+                          - id: a2a
+                          - id: agent-registries
+                      - id: agent-lingua
+                  - id: c-trust
+                    cluster: true
+                    display: node
+                    label: Trust & Delegation
+                    description: >-
+                      Identity, signatures, and delegated authority. These protocols let
+                      agents prove who is calling, carry user authorization, and enforce
+                      constraints like spending limits and TTLs — whether the counterpart
+                      is another agent or a deterministic API.
+                    items:
+                      - id: agent-identity
+                      - id: ucp
                       - id: ap2
                         children:
                           - id: intent-mandates
-              - id: agent-audit
-              - id: agent-card
-                children:
-                  - id: agent-registries
-              - id: agent-lingua
-              - id: human-context-protocol
+                  - id: c-user-controls
+                  - id: agent-audit
+                  - id: human-context-protocol
 
 # ── Technologies ────────────────────────────────────────────────────
 # unlock.state: locked | unlocked (default unlocked).
@@ -813,19 +835,20 @@ technologies:
       links:
         - { label: "Standard", url: "https://agents.md/" }
       what_it_solves: >-
-        Coding agents drop into unfamiliar repositories and need to know:
+        Now that they can reliably read files and directories, coding agents are
+        dropped into unfamiliar repositories and need to know:
         how do I build this? What style conventions matter? What should I
-        never touch? AGENTS.md gives them a predictable, standardized
+        never touch? Rebuilding this context for each request is inefficient.
+        AGENTS.md gives them a predictable, standardized
         place to find project-specific instructions.
       how_its_standardizing: >-
         Community-driven format that emerged from the practice of
-        embedding agent instructions in READMEs. Formalized with a
+        embedding agent instructions in READMEs. Later formalized with a
         public spec and conventions for sections. Reported adoption
         across 60,000+ projects per agents.md tracking.
       virtuous_cycle:
-        - "Repo maintainers write instructions once for all agent tools."
-        - "Agent tools auto-discover guidance, reducing failures and friction."
-        - "A shared convention encourages better repo hygiene for automation."
+        - "Repo maintainers put instructions in a standard place as they move from tool to tool."
+        - "Tool makers start to look in that place to make their tool easier to adopt."
     animation:
       actors:
         - id: agent
@@ -921,19 +944,22 @@ technologies:
       links:
         - { label: "Standard", url: "https://llmstxt.org/" }
       what_it_solves: >-
-        LLMs and agents need to find the right documentation on a website
-        efficiently. Sitemaps are designed for search engine crawlers, not
-        AI. llms.txt is a simple Markdown index at a well-known URL that
-        tells agents exactly where to look.
+        Model knowledge is frozen when the model is trained, but an agent might need more recent information,
+        such as the documentation for a software library that hadn't been released yet when the model was trained.
+        Agents can use web browsers to fetch that information, but browsing around for the right pages, fetching
+        web pages designed for humans,
+        and then extracting the information they need, is inefficient both for the agents and for the websites.
+        llms.txt is a simple Markdown index at a well-known URL that
+        tells agents where to look for key information designed for them to read.
       how_its_standardizing: >-
         Proposed by Jeremy Howard (September 2024). Adopted by
         documentation platforms and developer tools, with growing
         ecosystem support for auto-generating llms.txt files from
         existing site content.
       virtuous_cycle:
-        - "Sites publish an index; agents spend fewer tokens and fetch fewer pages."
-        - "Docs platforms add generators; adoption becomes near-zero effort."
-        - "Agent tooling becomes more reliable across arbitrary sites."
+        - "Agents that know to use llms.txt spend fewer tokens and fetch fewer pages for more accurate information."
+        - "Websites for services that want to be used by agents add llms.txt to encourage their use."
+        - "Tools for publishing documentation add automatic generators; adoption becomes near-zero effort."
     animation:
       actors:
         - id: agent
@@ -1012,52 +1038,76 @@ technologies:
         - { label: "Standard", url: "https://agentskills.io/specification" }
         - { label: "Codex skills docs", url: "https://developers.openai.com/codex/skills/" }
       what_it_solves: >-
-        Agents need reusable playbooks — task-specific knowledge with
-        optional scripts and references. Agent Skills package this know-how
-        in a standard directory format that any agent platform can discover
-        and use.
+        As agents grew beyond a handful of tools, two problems emerged:
+        (1) reliability and consistency: teams and communities wanted to share and improve
+        increasingly long and specific prompts to handle particular situations; and
+        (2) scale: agents need dozens or hundreds of reusable procedures,
+        scripts, and references without bloating every run's context. Agent skills package
+        task-specific playbooks (and optional scripts/resources) so an agent framework can load
+        just the metadata up front, then pull full instructions and files only when the
+        task calls for them.
       how_its_standardizing: >-
-        Open standard with emerging adoption among IDE agents. OpenAI's
-        Codex docs explicitly state it "builds on the open agent skills
-        standard." Companies like Cloudflare publish skills repos for
-        cross-platform use.
+        The format was developed in the Anthropic ecosystem (notably Claude Code) and
+        released as an open standard. OpenAI's Codex
+        built on the open Agent Skills standard,
+        and vendors published cross-agent skill repos (e.g., Cloudflare). Agent frameworks are converging on common local install locations and emerging “well-known” publishing patterns.
       virtuous_cycle:
-        - "Skill authors write once and reach many agent hosts."
-        - "Hosts get a growing library of reusable procedures."
-        - "Skills become a distribution channel for best practices."
+        - "Users working within a particular agent ecosystem develop a way to share skills with each other."
+        - "Builders of other agent ecosystems add support for the same format to benefit from the shared skills."
+        - "Users benefit from sharing skills across ecosystems."
     animation:
       actors:
-        - id: skill
-          label: Weather Skill
-          type: skill
-        - id: agent-a
-          label: Claude
+        - id: agent
+          label: Agent
           type: agent
-        - id: agent-b
-          label: Cursor
-          type: agent
+        - id: site-a
+          label: docs.example.com
+          type: website
+        - id: site-b
+          label: api.other.dev
+          type: website
       scenes:
-        - title: A skill is published
+        - title: Host discovers installed skills (metadata only)
           description: >-
-            A developer creates a skill directory with SKILL.md
-            describing what the skill does and how to use it.
-          actors_visible: [agent-a, skill]
+            At startup, hosts scan a known local skills directory and load only the
+            SKILL.md frontmatter (name + description) for every skill.
+          actors_visible: [host, skills-dir]
           messages:
-            - from: agent-a
-              to: skill
-              label: Discover skill
-              json_preview: 'Read skills/weather/SKILL.md'
-            - from: skill
-              to: agent-a
-              label: Skill definition
-              json_preview: '# Weather lookup\n## Inputs\n- location (string)\n## Usage\nCall scripts/get_weather.py'
+            - from: host
+              to: skills-dir
+              label: Scan skills directory
+              json_preview: 'list ~/.config/agent/skills/*/SKILL.md'
+            - from: skills-dir
+              to: host
+              label: Read frontmatter only
+              json_preview: '[{"name":"weather","description":"Look up current weather"}]'
               json_full: |
-                skills/weather/
-                  SKILL.md
-                  scripts/get_weather.py
-                  references/open-meteo.md
+                ~/.config/agent/skills/
+                  weather/
+                    SKILL.md
+                    scripts/get_weather.py
+                    references/open-meteo.md
 
-                # Weather lookup
+                ---
+                name: weather
+                description: Look up current weather for a location.
+                ---
+
+        - title: Host activates a skill (load instructions on demand)
+          description: >-
+            When a task matches, the host loads the full SKILL.md instructions and
+            any referenced files as needed (scripts, references).
+          actors_visible: [host, skill]
+          messages:
+            - from: host
+              to: skill
+              label: Load SKILL.md body
+              json_preview: 'Read skills/weather/SKILL.md (full)'
+              json_full: |
+                ---
+                name: weather
+                description: Look up current weather for a location.
+                ---
 
                 ## Inputs
                 - location (string)
@@ -1065,82 +1115,168 @@ technologies:
                 ## Output
                 - JSON: { "temp_c": number, "summary": string }
 
-                ## Usage
-                Call `scripts/get_weather.py --location "Boston, MA"`.
-        - title: Agent uses the skill
-          description: >-
-            The agent follows the skill instructions — reading the
-            playbook, running scripts, consulting references.
-          actors_visible: [agent-a, skill]
-          messages:
-            - from: agent-a
+                ## Steps
+                1. Run scripts/get_weather.py with the location.
+                2. If API errors occur, consult references/open-meteo.md.
+
+            - from: host
               to: skill
-              label: Execute
+              label: Run skill script
               json_preview: '$ python scripts/get_weather.py --location "Boston, MA"'
-            - from: skill
-              to: agent-a
-              label: Result
-              json_preview: '{"temp_c": 17, "summary": "Partly cloudy"}'
-        - title: Same skill, different agent
+
+        - title: Same skill works in different agent products
           description: >-
-            A completely different agent platform loads the same skill.
-            The standard directory format means it just works.
-          actors_visible: [agent-b, skill]
+            Because the directory + SKILL.md contract is shared, different hosts can
+            install the same skill bundle without rewriting it.
+          actors_visible: [skill, host]
           sparkle: true
           messages:
-            - from: agent-b
+            - from: host
               to: skill
-              label: Discover skill
-              json_preview: 'Read skills/weather/SKILL.md'
+              label: Install skill bundle
+              json_preview: 'install cloudflare/skills (Agent Skills format)'
             - from: skill
-              to: agent-b
-              label: Same definition
-              json_preview: '# Weather lookup\n## Inputs\n- location (string)'
+              to: host
+              label: Ready
+              json_preview: 'discovered: name="weather"'
+
+  - id: agent-skills-discovery
+    title: Agent Skills Discovery
+    icon_alt: "compass"
+    tagline: Find skills published by a trusted website
+    detail:
+      links:
+        - { label: "Cloudflare: Agent Skills Discovery RFC", url: "https://github.com/cloudflare/agent-skills-discovery-rfc" }
+        - { label: "Mintlify: Skills discovery from any URL", url: "https://www.mintlify.com/blog/skills-discovery-from-any-url" }
+        - { label: "RFC 8615 (.well-known)", url: "https://www.rfc-editor.org/rfc/rfc8615" }
+      what_it_solves: >-
+        The Agent Skills format standardizes a skill bundle on disk, but it doesn't
+        answer: “given a docs or product URL, where are the skills for this thing?”
+        Skills Discovery adds an llms.txt-like discovery mechanism: a predictable
+        well-known index that lists the skills published by that site or docs root.
+      how_its_standardizing: >-
+        Cloudflare's RFC proposes serving a JSON index under `/.well-known/skills/`
+        (built on RFC 8615). Tooling has started to implement it in practice: e.g.,
+        Mintlify auto-serves the index for docs sites and a CLI can install skills
+        from a URL without knowing repository structure.
+      virtuous_cycle:
+        - "Sites publish a predictable index; agents fetch fewer pages and waste fewer tokens."
+        - "CLIs/hosts can 'add skill from URL' with one convention instead of bespoke scraping."
+        - "More publishers adopt it because it becomes the default way agents learn products."
+    animation:
+      actors:
+        - id: agent
+          label: Agent Host / CLI
+          type: agent
+        - id: site
+          label: docs.example.com
+          type: website
+        - id: skills
+          label: Local Skills Folder
+          type: repo
+      scenes:
+        - title: Fetch the well-known skills index
+          description: >-
+            The host is given a docs URL and looks for a predictable index under
+            `/.well-known/skills/` to learn what skills exist for that site.
+          actors_visible: [agent, site]
+          messages:
+            - from: agent
+              to: site
+              label: GET index.json
+              json_preview: 'GET /docs/.well-known/skills/index.json'
+            - from: site
+              to: agent
+              label: Available skills
+              json_preview: '{"skills":[{"name":"payments","description":"Integrate checkout","files":["SKILL.md"]}]}'
+        - title: Install to the local skills directory
+          description: >-
+            The host downloads the listed files and installs the bundle into the
+            standard local skills location for immediate use.
+          actors_visible: [agent, skills]
+          sparkle: true
+          messages:
+            - from: agent
+              to: site
+              label: Fetch SKILL.md
+              json_preview: 'GET /docs/.well-known/skills/payments/SKILL.md'
+            - from: agent
+              to: skills
+              label: Write local skill bundle
+              json_preview: 'write ~/.config/agent/skills/payments/SKILL.md'
 
 
-  - id: skill-security
-    title: Skill Signing
-    icon_alt: "lock"
-    tagline: Safe distribution of capabilities
+  - id: agent-skills-registries
+    title: Agent Skills Registries
+    icon_alt: "dir"
+    tagline: npm-style catalogs for skills
     unlock: { state: locked, class: frontier }
     detail:
       links:
-        - { label: "Standard (inspiration)", url: "https://slsa.dev/" }
+        - { label: "Solo.io: agentregistry launch", url: "https://www.solo.io/press-releases/agent-skills-kubernetes-ecosystem" }
+        - { label: "Solo.io Lab: Introduction to agentregistry", url: "https://www.solo.io/resources/lab/introduction-to-agentregistry" }
+        - { label: "Agent Skills spec (package format)", url: "https://agentskills.io/specification" }
       what_it_solves: >-
-        Prevents malicious or over-privileged skills by standardizing
-        signing/provenance, declared permissions, sandbox expectations,
-        and review metadata.
+        As agent skills proliferate, users will want to find popular and well supported skills for specific tasks
+        ("what are the best skills for checking website accessibility?"). And as agents become more self-sufficient,
+        users may want them to go out and discover their own high quality skills as needed, rather than be limited to skills predicted by the agent's developer.
+        Skills registries would enable search, versions, metadata, curation, and organization-wide distribution,
+        similar to package managers for software libraries like npm or PyPI. This (we can hope!) also becomes the natural home for provenance, permissions, and policy metadata.
       how_its_standardizing: >-
-        Likely to borrow from supply-chain frameworks (provenance + signing)
-        and converge within agent skill ecosystems as marketplaces mature.
+        Registry behavior is emerging via vendor/open-source projects (e.g., Solo.io's
+        agentregistry or ClawHub.ai) that store skills and MCP servers with metadata, pull/install
+        workflows, and enterprise distribution patterns. A shared registry protocol
+        is not yet settled; convergence pressure will likely focus on a common
+        "package + manifest + fetch" surface layered on the Agent Skills bundle format.
       virtuous_cycle:
-        - "Users can trust skills based on provenance + declared permissions."
-        - "Marketplaces reduce risk without bespoke vetting per host."
-        - "Skill authors get a portable security envelope across platforms."
+        - "Publishers ship one artifact; many hosts can search and install it."
+        - "Organizations centralize distribution and policy instead of copying files around."
+        - "Security metadata (signing, permissions, sandbox expectations, trust relationships) enables use by more cautious users."
     animation:
       actors:
         - id: agent
           label: Agent Host
           type: agent
         - id: registry
-          label: Skill Registry
+          label: Skills Registry
           type: registry
+        - id: skills
+          label: Local Skills Folder
+          type: repo
       scenes:
-        - title: Verify skill provenance
+        - title: Search the registry for a skill
           description: >-
-            Before loading a skill, the agent host verifies its signature
-            and declared permissions.
+            The host queries a registry by task/keyword and gets back candidate skills
+            with versions and basic metadata.
           actors_visible: [agent, registry]
           messages:
             - from: agent
               to: registry
-              label: fetch metadata
-              json_preview: '{"skill":"weather","version":"1.2.0"}'
+              label: search
+              json_preview: '{"q":"checkout integration","limit":5}'
             - from: registry
               to: agent
-              label: signed manifest
-              json_preview: '{"signature":"...","permissions":["network"]}'
-
+              label: results
+              json_preview: '[{"name":"payments","version":"1.2.0","summary":"Integrate checkout flows"}]'
+        - title: Pull and install (policy to be worked out)
+          description: >-
+            The host downloads the selected skill bundle and installs it locally.
+            Registries are the natural place to attach provenance/permissions later.
+          actors_visible: [agent, registry, skills]
+          sparkle: true
+          messages:
+            - from: agent
+              to: registry
+              label: pull
+              json_preview: '{"name":"payments","version":"1.2.0"}'
+            - from: registry
+              to: agent
+              label: bundle + manifest
+              json_preview: '{"files":["SKILL.md","scripts/checkout.py"],"manifest":"..."}'
+            - from: agent
+              to: skills
+              label: install
+              json_preview: 'write ~/.config/agent/skills/payments/...'
 
   # ── Agent Loop ──────────────────────────────────────────────────────
   - id: agent-loop
@@ -1150,6 +1286,7 @@ technologies:
     detail:
       links:
         - { label: "Pattern", url: "https://www.anthropic.com/engineering/building-effective-agents" }
+        - { label: "goose (described as a 'reference implementation' contributed to the Linux Foundation)", url: "https://block.xyz/inside/block-anthropic-and-openai-launch-the-agentic-ai-foundation" }
       what_it_solves: >-
         Tool calling lets a model request one action — but real tasks require
         many steps. The agent loop is the pattern of repeatedly calling the

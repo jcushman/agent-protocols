@@ -71,6 +71,7 @@
   <button id="case8">Case 8 (first-class cluster)</button>
   <button id="case9">Case 9 (cluster child has children)</button>
   <button id="case10">Case 10 (full scenario)</button>
+  <button id="case11" style="background:#ffd;">Case 11 (skip-col bloat)</button>
 </div>
 
 <div id="stage">
@@ -215,6 +216,30 @@
         ]},
       { id: "ap2",  label: "AP2", col: 6, parent: "aid" },
       { id: "mand", label: "Mandates", col: 7, parent: "ap2" },
+    ],
+
+    // Case 11: Skip-column placeholder bloats vertical space
+    // Mirrors real layout: tool-calling has children mcp, standard-tools (col 1),
+    // and agent-loop (col 2, skips col 1). Agent-loop has many children.
+    // BUG: The placeholder for agent-loop in col 1 claims agent-loop's full
+    // subtree height, pushing mcp and standard-tools apart even though
+    // agent-loop's subtree lives in cols 2+, not col 1.
+    case11: [
+      { id: "TC",  label: "Tool Calling", col: 0 },
+      // Col 1 children
+      { id: "MCP", label: "MCP", col: 1, parent: "TC" },
+      { id: "MCP1", label: "MCP Apps", col: 2, parent: "MCP" },
+      { id: "ST",  label: "Std Tools", col: 1, parent: "TC" },
+      { id: "ST1", label: "agents.md", col: 2, parent: "ST" },
+      { id: "ST2", label: "llms.txt", col: 2, parent: "ST" },
+      // Col 2 child (skip col 1) — has big subtree
+      { id: "AL",  label: "Agent Loop", col: 2, parent: "TC" },
+      { id: "AL1", label: "Skills", col: 3, parent: "AL" },
+      { id: "AL2", label: "A2A", col: 3, parent: "AL" },
+      { id: "AL3", label: "Audit", col: 3, parent: "AL" },
+      { id: "AL4", label: "Card", col: 3, parent: "AL" },
+      { id: "AL5", label: "Lingua", col: 3, parent: "AL" },
+      { id: "AL6", label: "HCP", col: 3, parent: "AL" },
     ],
   };
 
@@ -444,11 +469,11 @@
         });
 
         if (singleParentChildren.length === 0) {
-          // For cluster items, base height is boxH.
-          // But if this item has its own children (item-level), we need
-          // to account for them too. Those children have this item as parent
-          // and are already in singleParentChildren above... unless they
-          // point to the item directly. Let's check childrenOf for this item.
+          subtreeHeight.set(item.id, cfg.boxH);
+        } else if (item.isPlaceholder) {
+          // Placeholders are invisible routing waypoints. Their subtree
+          // lives in later columns, so don't claim that vertical space
+          // in the intermediate column — just take one box height.
           subtreeHeight.set(item.id, cfg.boxH);
         } else {
           const childHeights = singleParentChildren.map(c => subtreeHeight.get(c.id) || cfg.boxH);
@@ -558,8 +583,12 @@
         const prev = allColItems[i - 1];
         const curr = allColItems[i];
 
-        const prevBottom = relY.get(prev.id) + (subtreeHeight.get(prev.id) || cfg.boxH) / 2;
-        const currTop = relY.get(curr.id) - (subtreeHeight.get(curr.id) || cfg.boxH) / 2;
+        // Use boxH (not subtreeHeight) for collision resolution.
+        // Subtree heights already handled spacing during the positioning
+        // phase; collision resolution just prevents box-to-box overlaps
+        // between nodes from different parents sharing a column.
+        const prevBottom = relY.get(prev.id) + cfg.boxH / 2;
+        const currTop = relY.get(curr.id) - cfg.boxH / 2;
         const overlap = prevBottom + cfg.gapY - currTop;
 
         if (overlap > 0) {
@@ -776,7 +805,7 @@
   });
 
   // Initial
-  render(CASES.case10);
+  render(CASES.case11);
 </script>
 
 </body>

@@ -18,6 +18,7 @@ const cfg = {
   gapY: 30,
   marginX: 60,
   marginY: 60,
+  clusterPad: 14,
 };
 
 // ── Init ──────────────────────────────────────────────────────────
@@ -142,7 +143,7 @@ function route() {
         window.scrollTo(0, 0);
       }
     }
-  } else if (hash && DATA.technologies.find(t => t.id === hash)) {
+  } else if (hash && DATA.technologies.find(t => t.id === hash && !t._clusterNode)) {
     showDetail(hash);
   } else {
     showTree();
@@ -175,8 +176,97 @@ function buildLayoutFromTree() {
   const orderedIds = [];
   const colById = new Map(); // id -> resolved column
 
+  // Cluster metadata extracted from tree, replaces DATA.clusters
+  DATA.clusters = [];
+
   function walk(nodes, structuralParentId, structuralParentCol) {
     for (const treeNode of nodes) {
+      // ── Cluster node ──
+      if (treeNode.cluster && treeNode.items) {
+        const extraCols = treeNode.extra_cols || 0;
+        let col;
+        if (structuralParentId !== null) {
+          const parentCol = colById.has(structuralParentId)
+            ? colById.get(structuralParentId)
+            : structuralParentCol;
+          col = parentCol + 1 + extraCols;
+        } else {
+          col = extraCols;
+        }
+        colById.set(treeNode.id, col);
+
+        // ── display: node — render cluster as a single round-rect box ──
+        if (treeNode.display === 'node') {
+          // Create a synthetic technology for the cluster node
+          const parents = [];
+          if (structuralParentId !== null) parents.push(structuralParentId);
+
+          const synthTech = {
+            id: treeNode.id,
+            title: treeNode.label,
+            tagline: '',
+            icon_alt: treeNode.icon_alt || treeNode.label.substring(0, 4),
+            layout: { col },
+            _clusterNode: true,
+            _clusterDescription: treeNode.description || '',
+            _clusterLabel: treeNode.label,
+          };
+
+          if (parents.length === 1) synthTech.layout.parent = parents[0];
+          else if (parents.length > 1) synthTech.layout.parents = parents;
+
+          DATA.technologies.push(synthTech);
+          techById.set(treeNode.id, synthTech);
+          orderedIds.push(treeNode.id);
+
+          // Walk items + cluster children as regular children of this node
+          const allChildren = [
+            ...treeNode.items,
+            ...(treeNode.children || []),
+          ];
+          if (allChildren.length) {
+            walk(allChildren, treeNode.id, col);
+          }
+          continue;
+        }
+
+        // ── Default cluster: dashed-outline group box ──
+        const itemIds = treeNode.items.map(it => it.id);
+        const parentIds = structuralParentId !== null ? [structuralParentId] : [];
+        DATA.clusters.push({
+          id: treeNode.id,
+          label: treeNode.label,
+          description: treeNode.description || '',
+          col,
+          members: itemIds,
+          parentIds,
+        });
+
+        // Walk items: each gets the cluster's column, no tree parent
+        for (const item of treeNode.items) {
+          const tech = techById.get(item.id);
+          if (!tech) {
+            console.warn(`Cluster item references unknown technology: ${item.id}`);
+            continue;
+          }
+          tech.layout = { col, _clusterId: treeNode.id };
+          colById.set(item.id, col);
+          orderedIds.push(item.id);
+
+          // Items within a cluster can have their own children
+          if (item.children) {
+            walk(item.children, item.id, col);
+          }
+        }
+
+        // Walk cluster-level children (e.g., inference-api from c-foundations)
+        if (treeNode.children) {
+          walk(treeNode.children, treeNode.id, col);
+        }
+        continue;
+      }
+
+      // ── Regular node ──
       const tech = techById.get(treeNode.id);
       if (!tech) {
         console.warn(`Tree references unknown technology: ${treeNode.id}`);
@@ -297,106 +387,106 @@ function resolveColumns(nodes) {
 //   4. Position nodes left-to-right, spacing siblings by subtree height
 //   5. Children stay centered on parents; parents spread to accommodate
 //   6. Multi-parent nodes center on the centroid of all parents
+//   7. Clusters are compound nodes: one column, items stacked vertically
 function computePositions(nodes) {
   // First, resolve column positions from parent + offset
   resolveColumns(nodes);
-  
+
   const byId = new Map(nodes.map((n, i) => [n.id, { ...n, inputIdx: i }]));
-  
+
+  // Build cluster metadata lookups
+  const clusters = DATA.clusters || [];
+  const clusterById = new Map(clusters.map(c => [c.id, c]));
+  const itemToCluster = new Map();
+  for (const cm of clusters) {
+    for (const mid of cm.members) {
+      itemToCluster.set(mid, cm.id);
+    }
+  }
+
   // Step 1: Create placeholders for edges that span multiple columns
-  // Key insight: create separate placeholders for each "cluster" of skip-col children
-  // A new cluster starts when there's a real node between consecutive skip-col destinations
-  
   const placeholders = [];
-  const placeholderMap = new Map(); // "parentId-col-cluster" -> placeholder
-  const nodeToPlaceholderCluster = new Map(); // "nodeId-parentId-col" -> cluster index
-  
-  // First, gather all skip-column edges grouped by (parent, intermediate col)
+  const placeholderMap = new Map();
+  const nodeToPlaceholderCluster = new Map();
+
   const skipEdgeGroups = new Map();
-  
+
   nodes.forEach((n, inputIdx) => {
     const parentIds = getLayoutParentIds(n);
     for (const pid of parentIds) {
-      const parentNode = byId.get(pid);
-      if (!parentNode || n.layout.col <= parentNode.layout.col + 1) continue;
-      
-      // This edge needs placeholders at each intermediate column
-      for (let col = parentNode.layout.col + 1; col < n.layout.col; col++) {
+      // Resolve parent column: might be a cluster id or a regular node
+      let parentCol;
+      if (clusterById.has(pid)) {
+        parentCol = clusterById.get(pid).col;
+      } else {
+        const parentNode = byId.get(pid);
+        if (!parentNode) continue;
+        parentCol = parentNode.layout.col;
+      }
+      if (n.layout.col <= parentCol + 1) continue;
+
+      for (let col = parentCol + 1; col < n.layout.col; col++) {
         const groupKey = `${pid}-${col}`;
         if (!skipEdgeGroups.has(groupKey)) {
-          skipEdgeGroups.set(groupKey, { parentId: pid, col, children: [] });
+          skipEdgeGroups.set(groupKey, { parentId: pid, parentCol, col, children: [] });
         }
         skipEdgeGroups.get(groupKey).children.push({ node: n, inputIdx });
       }
     }
   });
-  
-  // Also collect real nodes at each column for cluster detection
+
   const realNodesAtCol = new Map();
   nodes.forEach((n, inputIdx) => {
     if (!realNodesAtCol.has(n.layout.col)) realNodesAtCol.set(n.layout.col, []);
     realNodesAtCol.get(n.layout.col).push({ node: n, inputIdx });
   });
-  
-  // Now process each group to create clustered placeholders
+
   for (const [groupKey, group] of skipEdgeGroups) {
-    const { parentId, col, children } = group;
+    const { parentId, parentCol, col, children } = group;
     const realNodes = realNodesAtCol.get(col) || [];
-    
-    // Sort children by inputIdx
+
     children.sort((a, b) => a.inputIdx - b.inputIdx);
-    
-    // Sort real nodes by inputIdx  
     const sortedRealNodes = [...realNodes].sort((a, b) => a.inputIdx - b.inputIdx);
-    
-    // Assign cluster indices: increment cluster when a real node appears between consecutive children
+
     let clusterIdx = 0;
     let realNodePointer = 0;
-    
+
     for (let i = 0; i < children.length; i++) {
       const child = children[i];
-      
-      // Check if any real node comes between this child and the previous one
+
       if (i > 0) {
         const prevChildIdx = children[i - 1].inputIdx;
         const currChildIdx = child.inputIdx;
-        
-        // Count real nodes between prev and curr
-        while (realNodePointer < sortedRealNodes.length && 
+
+        while (realNodePointer < sortedRealNodes.length &&
                sortedRealNodes[realNodePointer].inputIdx < currChildIdx) {
           if (sortedRealNodes[realNodePointer].inputIdx > prevChildIdx) {
-            // Found a real node between prev and curr - start new cluster
             clusterIdx++;
             break;
           }
           realNodePointer++;
         }
       }
-      
-      // Record which cluster this node belongs to for this parent-col combo
+
       nodeToPlaceholderCluster.set(`${child.node.id}-${parentId}-${col}`, clusterIdx);
-      
-      // Create placeholder for this cluster if it doesn't exist
+
       const phKey = `${parentId}-${col}-${clusterIdx}`;
       if (!placeholderMap.has(phKey)) {
-        const prevCol = col - 1;
-        const prevPhKey = `${parentId}-${prevCol}-${clusterIdx}`;
-        const parentNode = byId.get(parentId);
-        
+        const prevPhKey = `${parentId}-${col - 1}-${clusterIdx}`;
+
         placeholders.push({
           id: `ph-${phKey}`,
           layout: { col: col },
-          parent: col === parentNode.layout.col + 1 ? parentId : `ph-${prevPhKey}`,
+          parent: col === parentCol + 1 ? parentId : `ph-${prevPhKey}`,
           isPlaceholder: true,
-          inputIdx: child.inputIdx, // Use first child's inputIdx for positioning
+          inputIdx: child.inputIdx,
         });
         placeholderMap.set(phKey, placeholders[placeholders.length - 1]);
       }
     }
   }
-  
+
   // Compute layoutParents: for each node, list of layout parent IDs
-  // If node skips columns, use the cluster-specific placeholder in col-1 for that parent
   const layoutParents = new Map();
   nodes.forEach(n => {
     const parentIds = getLayoutParentIds(n);
@@ -404,38 +494,44 @@ function computePositions(nodes) {
       layoutParents.set(n.id, []);
     } else {
       const lps = parentIds.map(pid => {
-        const parentNode = byId.get(pid);
-        if (parentNode && n.layout.col > parentNode.layout.col + 1) {
-          // Look up the cluster index for this node-parent-col combo
+        let parentCol;
+        if (clusterById.has(pid)) {
+          parentCol = clusterById.get(pid).col;
+        } else {
+          const parentNode = byId.get(pid);
+          if (!parentNode) return pid;
+          parentCol = parentNode.layout.col;
+        }
+
+        if (n.layout.col > parentCol + 1) {
           const clusterKey = `${n.id}-${pid}-${n.layout.col - 1}`;
-          const clusterIdx = nodeToPlaceholderCluster.get(clusterKey) || 0;
-          return `ph-${pid}-${n.layout.col - 1}-${clusterIdx}`;
+          const ci = nodeToPlaceholderCluster.get(clusterKey) || 0;
+          return `ph-${pid}-${n.layout.col - 1}-${ci}`;
         }
         return pid;
       });
       layoutParents.set(n.id, lps);
     }
   });
-  
+
   const allItems = [
     ...nodes.map((n, i) => ({ ...n, inputIdx: i })),
     ...placeholders
   ];
-  
+
   const columns = new Map();
   allItems.forEach(item => {
     const col = item.layout.col;
     if (!columns.has(col)) columns.set(col, []);
     columns.get(col).push(item);
   });
-  
-  // Sort each column by inputIdx to preserve input order
+
   columns.forEach(items => items.sort((a, b) => a.inputIdx - b.inputIdx));
-  
+
   const sortedCols = [...columns.keys()].sort((a, b) => a - b);
   const maxCol = Math.max(...sortedCols);
-  
-  // Step 2: Build children map (parent -> children)
+
+  // Step 2: Build children map
   const childrenOf = new Map();
   allItems.forEach(item => {
     const lps = layoutParents.get(item.id) || (item.parent ? [item.parent] : []);
@@ -444,22 +540,25 @@ function computePositions(nodes) {
       childrenOf.get(pid).push(item);
     }
   });
-  
-  // Step 3: Compute subtree height for each node (right-to-left)
-  // For multi-parent children, they are positioned separately (not in subtree calc)
+
+  // Step 3: Compute subtree height (right-to-left)
   const subtreeHeight = new Map();
-  
+
   for (let col = maxCol; col >= 0; col--) {
     const items = columns.get(col) || [];
     for (const item of items) {
       const children = childrenOf.get(item.id) || [];
-      // Filter to children with this as their ONLY layout parent
       const singleParentChildren = children.filter(c => {
         const lps = layoutParents.get(c.id) || (c.parent ? [c.parent] : []);
         return lps.length === 1;
       });
-      
+
       if (singleParentChildren.length === 0) {
+        subtreeHeight.set(item.id, cfg.boxH);
+      } else if (item.isPlaceholder) {
+        // Placeholders are invisible routing waypoints. Their subtree
+        // lives in later columns, so don't claim that vertical space
+        // in the intermediate column — just take one box height.
         subtreeHeight.set(item.id, cfg.boxH);
       } else {
         const childHeights = singleParentChildren.map(c => subtreeHeight.get(c.id) || cfg.boxH);
@@ -468,18 +567,52 @@ function computePositions(nodes) {
       }
     }
   }
-  
+
+  // Cluster subtree heights: sum of item subtree heights + gaps
+  for (const cm of clusters) {
+    const itemHeights = cm.members.map(id => subtreeHeight.get(id) || cfg.boxH);
+    const clusterH = itemHeights.reduce((sum, h) => sum + h, 0) + (cm.members.length - 1) * cfg.gapY;
+    subtreeHeight.set(cm.id, clusterH);
+  }
+
   // Step 4: Position nodes left-to-right
   const relY = new Map();
-  
+
+  // First, position cluster items as a group
+  for (const cm of clusters) {
+    let parentCenterY = 0;
+    if (cm.parentIds && cm.parentIds.length > 0) {
+      const pys = cm.parentIds.map(pid => relY.get(pid)).filter(y => y !== undefined);
+      if (pys.length > 0) {
+        parentCenterY = pys.reduce((a, b) => a + b, 0) / pys.length;
+      }
+    }
+
+    const itemHeights = cm.members.map(id => subtreeHeight.get(id) || cfg.boxH);
+    const totalSpan = itemHeights.reduce((sum, h) => sum + h, 0) + (cm.members.length - 1) * cfg.gapY;
+
+    let currentY = parentCenterY - totalSpan / 2;
+    cm.members.forEach((itemId, i) => {
+      const h = itemHeights[i];
+      relY.set(itemId, currentY + h / 2);
+      currentY += h + cfg.gapY;
+    });
+
+    const firstItemY = relY.get(cm.members[0]);
+    const lastItemY = relY.get(cm.members[cm.members.length - 1]);
+    relY.set(cm.id, (firstItemY + lastItemY) / 2);
+  }
+
   for (const col of sortedCols) {
     const items = columns.get(col);
-    
-    // Separate items: single-parent (grouped by parent) vs multi-parent (own position)
+
     const singleParentItems = [];
     const multiParentItems = [];
-    
+
     items.forEach(item => {
+      // Skip cluster items — already positioned
+      if (item.layout._clusterId) return;
+
       const lps = layoutParents.get(item.id) || (item.parent ? [item.parent] : []);
       if (lps.length <= 1) {
         singleParentItems.push(item);
@@ -487,8 +620,7 @@ function computePositions(nodes) {
         multiParentItems.push(item);
       }
     });
-    
-    // Group single-parent items by their parent
+
     const byParent = new Map();
     singleParentItems.forEach(item => {
       const lps = layoutParents.get(item.id) || (item.parent ? [item.parent] : []);
@@ -496,14 +628,13 @@ function computePositions(nodes) {
       if (!byParent.has(pid)) byParent.set(pid, []);
       byParent.get(pid).push(item);
     });
-    
-    // Position single-parent groups centered around their parent
+
     for (const [pid, group] of byParent) {
       const parentCenterY = (pid !== "__root__" && relY.has(pid)) ? relY.get(pid) : 0;
-      
+
       const heights = group.map(item => subtreeHeight.get(item.id) || cfg.boxH);
       const totalSpan = heights.reduce((sum, h) => sum + h, 0) + (group.length - 1) * cfg.gapY;
-      
+
       let currentY = parentCenterY - totalSpan / 2;
       group.forEach((item, i) => {
         const h = heights[i];
@@ -511,8 +642,7 @@ function computePositions(nodes) {
         currentY += h + cfg.gapY;
       });
     }
-    
-    // Position multi-parent items centered on centroid of all parents
+
     multiParentItems.forEach(item => {
       const lps = layoutParents.get(item.id) || [];
       const parentYs = lps.map(pid => relY.get(pid)).filter(y => y !== undefined);
@@ -523,19 +653,22 @@ function computePositions(nodes) {
         relY.set(item.id, 0);
       }
     });
-    
-    // Collision resolution: sort ALL items by inputIdx
+
+    // Collision resolution: all items in column including cluster items
     const allColItems = [...items].sort((a, b) => a.inputIdx - b.inputIdx);
-    
-    // Push items down if they overlap with previous
+
     for (let i = 1; i < allColItems.length; i++) {
       const prev = allColItems[i - 1];
       const curr = allColItems[i];
-      
-      const prevBottom = relY.get(prev.id) + (subtreeHeight.get(prev.id) || cfg.boxH) / 2;
-      const currTop = relY.get(curr.id) - (subtreeHeight.get(curr.id) || cfg.boxH) / 2;
+
+      // Use boxH (not subtreeHeight) for collision resolution.
+      // Subtree heights already handled spacing during the positioning
+      // phase; collision resolution just prevents box-to-box overlaps
+      // between nodes from different parents sharing a column.
+      const prevBottom = relY.get(prev.id) + cfg.boxH / 2;
+      const currTop = relY.get(curr.id) - cfg.boxH / 2;
       const overlap = prevBottom + cfg.gapY - currTop;
-      
+
       if (overlap > 0) {
         for (let j = i; j < allColItems.length; j++) {
           relY.set(allColItems[j].id, relY.get(allColItems[j].id) + overlap);
@@ -543,16 +676,24 @@ function computePositions(nodes) {
       }
     }
   }
-  
+
+  // Update cluster center Y after collision resolution
+  for (const cm of clusters) {
+    const firstItemY = relY.get(cm.members[0]);
+    const lastItemY = relY.get(cm.members[cm.members.length - 1]);
+    relY.set(cm.id, (firstItemY + lastItemY) / 2);
+  }
+
   // Step 5: Convert relative positions to absolute canvas positions
   let minRelY = Infinity;
-  relY.forEach(y => { minRelY = Math.min(minRelY, y); });
-  
+  relY.forEach(y => { if (isFinite(y)) minRelY = Math.min(minRelY, y); });
+
   const offsetY = cfg.marginY + cfg.boxH / 2 - minRelY;
-  
+
   const pos = new Map();
   allItems.forEach(item => {
     const centerY = relY.get(item.id);
+    if (centerY === undefined) return;
     const x = cfg.marginX + item.layout.col * (cfg.boxW + cfg.gapX);
     const y = centerY + offsetY - cfg.boxH / 2;
     pos.set(item.id, {
@@ -562,13 +703,40 @@ function computePositions(nodes) {
       centerY: centerY + offsetY
     });
   });
-  
+
+  // Store cluster bounding-box positions for edge routing and rendering
+  for (const cm of clusters) {
+    const centerY = relY.get(cm.id) + offsetY;
+    const x = cfg.marginX + cm.col * (cfg.boxW + cfg.gapX);
+    const itemPositions = cm.members.map(id => pos.get(id)).filter(Boolean);
+    if (!itemPositions.length) continue;
+    const minItemY = Math.min(...itemPositions.map(p => p.y));
+    const maxItemY = Math.max(...itemPositions.map(p => p.y + cfg.boxH));
+    pos.set(cm.id, {
+      x: x - cfg.clusterPad,
+      y: minItemY - cfg.clusterPad,
+      col: cm.col,
+      isCluster: true,
+      centerY: centerY,
+      clusterW: cfg.boxW + cfg.clusterPad * 2,
+      clusterH: (maxItemY - minItemY) + cfg.clusterPad * 2,
+      clusterRight: x + cfg.boxW + cfg.clusterPad,
+      clusterLeft: x - cfg.clusterPad,
+    });
+  }
+
   return { pos, nodeToPlaceholderCluster };
 }
 
 // Edge routing helpers
-function midRight(p) { return { x: p.x + cfg.boxW, y: p.centerY }; }
-function midLeft(p)  { return { x: p.x, y: p.centerY }; }
+function midRight(p) {
+  if (p.isCluster) return { x: p.clusterRight, y: p.centerY };
+  return { x: p.x + cfg.boxW, y: p.centerY };
+}
+function midLeft(p) {
+  if (p.isCluster) return { x: p.clusterLeft, y: p.centerY };
+  return { x: p.x, y: p.centerY };
+}
 
 function betweenColsX(colA, colB) {
   const xRightA = cfg.marginX + colA * (cfg.boxW + cfg.gapX) + cfg.boxW;
@@ -576,9 +744,10 @@ function betweenColsX(colA, colB) {
   return (xRightA + xLeftB) / 2;
 }
 
-function routeEdge(parentNode, childNode, pos, nodeToPlaceholderCluster) {
-  const p = pos.get(parentNode.id);
-  const c = pos.get(childNode.id);
+function routeEdge(parentId, childId, pos, nodeToPlaceholderCluster) {
+  const p = pos.get(parentId);
+  const c = pos.get(childId);
+  if (!p || !c) return [];
   const S = midRight(p);
   const E = midLeft(c);
   
@@ -587,10 +756,9 @@ function routeEdge(parentNode, childNode, pos, nodeToPlaceholderCluster) {
   // Collect waypoints: placeholders in intermediate columns (cluster-specific)
   const waypoints = [];
   for (let col = p.col + 1; col < c.col; col++) {
-    // Look up the cluster index for this specific edge
-    const clusterKey = `${childNode.id}-${parentNode.id}-${col}`;
+    const clusterKey = `${childId}-${parentId}-${col}`;
     const clusterIdx = nodeToPlaceholderCluster.get(clusterKey) || 0;
-    const phId = `ph-${parentNode.id}-${col}-${clusterIdx}`;
+    const phId = `ph-${parentId}-${col}-${clusterIdx}`;
     if (pos.has(phId)) {
       waypoints.push(pos.get(phId));
     }
@@ -657,12 +825,17 @@ function showTree() {
   })));
   console.groupEnd();
 
-  // Calculate wrapper dimensions from positions
+  // Calculate wrapper dimensions from positions (including cluster boxes)
   let maxX = 0, maxY = 0;
   pos.forEach(p => {
     if (p.isPlaceholder) return;
-    maxX = Math.max(maxX, p.x + cfg.boxW);
-    maxY = Math.max(maxY, p.y + cfg.boxH);
+    if (p.isCluster) {
+      maxX = Math.max(maxX, p.x + p.clusterW);
+      maxY = Math.max(maxY, p.y + p.clusterH);
+    } else {
+      maxX = Math.max(maxX, p.x + cfg.boxW);
+      maxY = Math.max(maxY, p.y + cfg.boxH);
+    }
   });
   const wrapperW = maxX + cfg.marginX;
   const wrapperH = maxY + cfg.marginY;
@@ -673,13 +846,15 @@ function showTree() {
     const p = pos.get(tech.id);
     const locked = isLocked(tech);
     const lockedClass = locked ? ' node-locked' : '';
+    const clusterNodeClass = tech._clusterNode ? ' tree-node--cluster-node' : '';
 
     const iconHtml = techIconHtml(tech, 'node-icon-img');
 
     nodesHtml += `
-      <div class="tree-node${lockedClass}" tabindex="0" role="button"
+      <div class="tree-node${lockedClass}${clusterNodeClass}" tabindex="0" role="button"
            data-id="${tech.id}"
-           aria-label="${escapeHtml(tech.title)}: ${escapeHtml(tech.tagline)}"
+           ${tech._clusterNode ? 'data-cluster-node="true"' : ''}
+           aria-label="${escapeHtml(tech.title)}${tech.tagline ? ': ' + escapeHtml(tech.tagline) : ''}"
            style="left:${p.x}px;top:${p.y}px;width:${cfg.boxW}px;height:${cfg.boxH}px;">
         <div class="node-header">
           <div class="node-icon" aria-hidden="true">${iconHtml}</div>
@@ -697,46 +872,39 @@ function showTree() {
     </marker>
   </defs>`;
 
-  // DEBUG: Log edges being drawn
-  console.group('Edges Debug');
+  // Draw edges: cluster-level parent edges + regular node edges
+  // 1. Cluster-level parent edges (e.g., a2a -> c-domain)
+  (DATA.clusters || []).forEach(cluster => {
+    (cluster.parentIds || []).forEach(pid => {
+      const pts = routeEdge(pid, cluster.id, pos, nodeToPlaceholderCluster);
+      if (pts.length) {
+        svgPaths += `<path d="${polylinePath(pts)}" marker-end="url(#ah)"/>`;
+      }
+    });
+  });
+
+  // 2. Regular node edges (parent is a node, cluster, or item)
   techs.forEach(tech => {
     const parentIds = getLayoutParentIds(tech);
     for (const pid of parentIds) {
-      const parentNode = byId.get(pid);
-      if (!parentNode) continue;
-      
-      const pts = routeEdge(parentNode, tech, pos, nodeToPlaceholderCluster);
-      console.log(`Edge: ${pid} → ${tech.id}`, { 
-        parentCol: parentNode.layout.col, 
-        childCol: tech.layout.col,
-        points: pts 
-      });
-      svgPaths += `<path d="${polylinePath(pts)}" marker-end="url(#ah)"/>`;
+      const pts = routeEdge(pid, tech.id, pos, nodeToPlaceholderCluster);
+      if (pts.length) {
+        svgPaths += `<path d="${polylinePath(pts)}" marker-end="url(#ah)"/>`;
+      }
     }
   });
-  console.groupEnd();
 
-  // Build cluster outlines (computed from member bounding boxes)
+  // Build cluster outlines (positions computed by layout engine)
   let clustersHtml = '';
   (DATA.clusters || []).forEach(cluster => {
-    const members = techs.filter(t => cluster.members.includes(t.id));
-    if (!members.length) return;
-    const clPad = 14;
-    const memberPos = members.map(m => pos.get(m.id));
-    const cMinX = Math.min(...memberPos.map(p => p.x));
-    const cMaxX = Math.max(...memberPos.map(p => p.x));
-    const cMinY = Math.min(...memberPos.map(p => p.y));
-    const cMaxY = Math.max(...memberPos.map(p => p.y));
-    const cx = cMinX - clPad;
-    const cy = cMinY - clPad;
-    const cw = (cMaxX - cMinX) + cfg.boxW + clPad * 2;
-    const ch = (cMaxY - cMinY) + cfg.boxH + clPad * 2;
+    const cp = pos.get(cluster.id);
+    if (!cp) return;
     const hasDesc = cluster.description && cluster.description.trim();
     const labelTag = hasDesc
       ? `<button class="tree-group-label tree-group-label--clickable" onclick="showClusterModal('${escapeHtml(cluster.id)}')">${escapeHtml(cluster.label)} <span class="tree-group-info">[?]</span></button>`
       : `<span class="tree-group-label">${escapeHtml(cluster.label)}</span>`;
     clustersHtml += `
-      <div class="tree-group" style="left:${cx}px;top:${cy}px;width:${cw}px;height:${ch}px">
+      <div class="tree-group" style="left:${cp.x}px;top:${cp.y}px;width:${cp.clusterW}px;height:${cp.clusterH}px">
         ${labelTag}
       </div>`;
   });
@@ -796,6 +964,9 @@ function showTree() {
           overlay.classList.add('unlock-fade');
           overlay.addEventListener('animationend', () => overlay.remove(), { once: true });
         }
+      } else if (node.dataset.clusterNode) {
+        // Cluster-node: show description modal
+        showClusterModal(id);
       } else {
         navigateTo(id);
       }
@@ -819,13 +990,41 @@ function buildRelHtml(techId) {
   const tech = DATA.technologies.find(t => t.id === techId);
   if (!tech) return '';
 
-  const parentIds = getLayoutParentIds(tech);
+  const clusters = DATA.clusters || [];
+  const clusterIds = new Set(clusters.map(c => c.id));
+  const clusterById = new Map(clusters.map(c => [c.id, c]));
+
+  // Resolve parents: if a parent is a cluster, expand to its member techs
+  const rawParentIds = getLayoutParentIds(tech);
+  const resolvedParentIds = [];
+  for (const pid of rawParentIds) {
+    if (clusterById.has(pid)) {
+      resolvedParentIds.push(...clusterById.get(pid).members);
+    } else {
+      resolvedParentIds.push(pid);
+    }
+  }
+
+  // Find children: techs whose parent is this techId, plus
+  // if this tech is inside a cluster, also find techs parented to that cluster
   const childTechs = DATA.technologies.filter(t => {
     const pids = getLayoutParentIds(t);
     return pids.includes(techId);
   });
+  // Also check if any cluster is parented to this tech
+  for (const cm of clusters) {
+    if ((cm.parentIds || []).includes(techId)) {
+      // Add the cluster's members as children
+      for (const mid of cm.members) {
+        const memberTech = DATA.technologies.find(t => t.id === mid);
+        if (memberTech && !childTechs.includes(memberTech)) {
+          childTechs.push(memberTech);
+        }
+      }
+    }
+  }
 
-  if (!parentIds.length && !childTechs.length) return '';
+  if (!resolvedParentIds.length && !childTechs.length) return '';
 
   function renderRelGroup(label, techs) {
     if (!techs.length) return '';
@@ -844,7 +1043,7 @@ function buildRelHtml(techId) {
       </div>`;
   }
 
-  const parentTechs = parentIds.map(pid => DATA.technologies.find(t => t.id === pid)).filter(Boolean);
+  const parentTechs = resolvedParentIds.map(pid => DATA.technologies.find(t => t.id === pid)).filter(Boolean);
   return `<div class="tree-rel-bar">${renderRelGroup('Unlocked by', parentTechs)}${renderRelGroup('Unlocks', childTechs)}</div>`;
 }
 
@@ -1006,6 +1205,16 @@ function showReader() {
         } else {
           allRoots.push(entry);
         }
+      }
+
+      // Cluster-node techs (display: node) render like clusters in reader
+      if (t._clusterNode) {
+        const parentId = parentIds.length > 0 ? parentIds[0] : null;
+        addEntry({
+          type: 'cluster',
+          item: { id: t.id, label: t._clusterLabel, description: t._clusterDescription }
+        }, parentId);
+        return;
       }
 
       if (cluster && !clustersInserted.has(cluster.id)) {
@@ -1360,9 +1569,23 @@ function showDetailsModal() {
 
 // ── Cluster Description Modal ─────────────────────────────────────
 function showClusterModal(clusterId) {
-  if (!DATA || !DATA.clusters) return;
-  const cluster = DATA.clusters.find(c => c.id === clusterId);
-  if (!cluster || !cluster.description) return;
+  if (!DATA) return;
+
+  // Look up in regular clusters first, then check synthetic cluster-node techs
+  let label, description;
+  const cluster = (DATA.clusters || []).find(c => c.id === clusterId);
+  if (cluster) {
+    label = cluster.label;
+    description = cluster.description;
+  } else {
+    const tech = DATA.technologies.find(t => t.id === clusterId && t._clusterNode);
+    if (tech) {
+      label = tech._clusterLabel;
+      description = tech._clusterDescription;
+    }
+  }
+
+  if (!label || !description) return;
 
   closeModal();
 
@@ -1373,10 +1596,10 @@ function showClusterModal(clusterId) {
     <div class="json-modal__backdrop" onclick="closeModal()"></div>
     <div class="json-modal__content">
       <div class="json-modal__header">
-        <div class="json-modal__title">${escapeHtml(cluster.label)}</div>
+        <div class="json-modal__title">${escapeHtml(label)}</div>
         <button class="json-modal__close" onclick="closeModal()" aria-label="Close">&times;</button>
       </div>
-      <div class="json-modal__body">${escapeHtml(cluster.description)}</div>
+      <div class="json-modal__body">${escapeHtml(description)}</div>
     </div>
   `;
   document.body.appendChild(modal);

@@ -316,6 +316,17 @@ body {
   color: var(--fg);
 }
 
+/* ── Cluster-node (display: node) — round-rect box ────────────── */
+.tree-node--cluster-node {
+  border-radius: 20px;
+  align-items: center;
+  text-align: center;
+}
+
+.tree-node--cluster-node .node-icon {
+  display: none;
+}
+
 /* ── Group outlines (dashed rectangles) ────────────────────────── */
 .tree-group {
   position: absolute;
