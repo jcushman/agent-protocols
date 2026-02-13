@@ -1349,125 +1349,298 @@ technologies:
               label: result
               json_preview: '{"failures":0}'
 
-  # ── A2A ───────────────────────────────────────────────────────────
-  - id: a2a
-    title: A2A
-    icon_alt: "<>"
-    tagline: Agents working across frameworks
+  # ── AgentCard ───────────────────────────────────────────────────────
+  - id: agent-card
+    title: AgentCard
+    icon_alt: "card"
+    tagline: Well-known agent descriptors
     detail:
       links:
-        - { label: "Launch", url: "https://developers.googleblog.com/en/a2a-a-new-era-of-agent-interoperability/" }
-        - { label: "Specification", url: "https://agent2agent.info/specification/" }
-        - { label: "Linux Foundation", url: "https://www.linuxfoundation.org/projects/agent2agent" }
+        - { label: "A2A AgentCard spec", url: "https://agent2agent.info/specification/#agentcard" }
       what_it_solves: >-
-        Agents built on different frameworks — by different vendors — need
-        to discover each other, negotiate capabilities, and coordinate on
-        tasks. A2A provides a standard protocol for agent-to-agent
-        interoperability without requiring shared internals.
+        Before agents can collaborate, they need to discover each other's
+        capabilities, endpoints, and authentication requirements. AgentCard
+        is a JSON descriptor at a well-known URL that tells other agents
+        what this agent can do and how to talk to it.
       how_its_standardizing: >-
-        Announced by Google (April 2025). Quickly moved to open
-        governance under the Linux Foundation. Implemented by multiple
-        platforms; Microsoft ecosystem documentation positions it as a
-        standard integration surface.
+        Defined as part of A2A. Agents publish a JSON file at
+        /.well-known/agent-card.json describing name, skills, supported
+        input/output modes, and auth schemes. Provides the discovery
+        primitive that higher-level registries can index.
       virtuous_cycle:
-        - "Enterprises can compose agents across vendors instead of buying a monolith."
-        - "Vendors become more valuable by being interoperable, not isolated."
-        - "A shared task/artifact model enables tooling (routers, registries, monitors)."
+        - "Agents can discover each other without a central directory."
+        - "Registries index the same descriptor format across vendors."
+        - "A standard metadata shape enables tooling (routers, monitors, catalogs)."
     animation:
       actors:
         - id: client
-          label: Your Agent
+          label: Client Agent
           type: agent
-        - id: invoice-agent
-          label: Invoice Agent
+        - id: remote
+          label: InvoiceAgent (Remote)
           type: agent
-        - id: research-agent
-          label: Research Agent
-          type: agent
+        - id: registry
+          label: Agent Registry / Router
+          type: registry
+
       scenes:
-        - title: Discover a remote agent
+        - title: Fetch AgentCard (bootstrap)
           description: >-
-            Your agent fetches the remote agent's AgentCard — a JSON
-            file at a well-known URL describing capabilities and skills.
-          actors_visible: [client, invoice-agent]
+            The client discovers the remote agent by fetching a well-known
+            descriptor. This is metadata only: no task is submitted yet.
+          actors_visible: [client, remote]
           messages:
             - from: client
-              to: invoice-agent
-              label: Fetch AgentCard
+              to: remote
+              label: GET /.well-known/agent-card.json
               json_preview: 'GET /.well-known/agent-card.json'
-            - from: invoice-agent
+              json_full: |
+                GET /.well-known/agent-card.json HTTP/1.1
+                Host: agent.example
+                Accept: application/json
+            - from: remote
               to: client
-              label: Capabilities
-              json_preview: '{"name":"InvoiceAgent","skills":[{"id":"extract","name":"Extract invoice"}]}'
+              label: AgentCard
+              json_preview: '{"name":"InvoiceAgent","url":"https://agent.example/a2a","authentication":{"schemes":["Bearer","mTLS"]},"defaultInputModes":["application/pdf"],"skills":[{"id":"extract"}]}'
               json_full: |
                 {
                   "name": "InvoiceAgent",
                   "description": "Extracts invoice fields from PDFs",
                   "url": "https://agent.example/a2a",
-                  "provider": {
-                    "organization": "ExampleCo",
-                    "url": "https://example.com"
-                  },
+                  "provider": { "organization": "ExampleCo", "url": "https://example.com" },
                   "version": "1.0.0",
                   "capabilities": {
                     "streaming": true,
                     "pushNotifications": false,
                     "stateTransitionHistory": true
                   },
-                  "authentication": {"schemes": ["Bearer"]},
+                  "authentication": { "schemes": ["Bearer", "mTLS"] },
                   "defaultInputModes": ["application/pdf", "text/plain"],
                   "defaultOutputModes": ["application/json"],
                   "skills": [{
                     "id": "extract",
                     "name": "Extract invoice",
                     "description": "Parse invoice fields from documents",
-                    "tags": ["ap"],
+                    "tags": ["ap", "invoice"],
                     "examples": ["Extract totals from this PDF"]
                   }]
                 }
-        - title: Send a task
+
+        - title: Preflight compatibility + auth negotiation
           description: >-
-            Your agent sends a task with messages. The remote agent
-            processes it and returns artifacts.
-          actors_visible: [client, invoice-agent]
-          messages:
-            - from: client
-              to: invoice-agent
-              label: Submit task
-              json_preview: '{"task":{"id":"t-123","state":"submitted"},"messages":[{"role":"user","parts":[...]}]}'
-              json_full: |
-                {
-                  "task": {
-                    "id": "t-123",
-                    "state": "submitted"
-                  },
-                  "messages": [{
-                    "role": "user",
-                    "parts": [{
-                      "content_type": "text/plain",
-                      "content": "Extract invoice fields from https://example.com/inv.pdf"
-                    }]
-                  }]
-                }
-            - from: invoice-agent
-              to: client
-              label: Task artifacts
-              json_preview: '{"task":{"state":"completed"},"artifacts":[{"parts":[{"content":"{...}"}]}]}'
-        - title: Different agent, same protocol
-          description: >-
-            Your agent discovers a Research Agent at a different
-            organization. Same AgentCard format, same task protocol.
-          actors_visible: [client, research-agent]
+            The client uses AgentCard to decide whether delegation makes sense:
+            required skill exists, I/O modes match, and an auth scheme can be chosen.
+          actors_visible: [client, remote]
           sparkle: true
           messages:
             - from: client
-              to: research-agent
-              label: Fetch AgentCard
-              json_preview: 'GET /.well-known/agent-card.json'
-            - from: research-agent
               to: client
-              label: Capabilities
-              json_preview: '{"name":"ResearchAgent","skills":[{"id":"search","name":"Deep research"}]}'
+              label: Select skill + mode
+              json_preview: 'need: skill="extract" input="application/pdf" output="application/json"'
+              json_full: |
+                Preflight checks:
+                - Has skill "extract"? ✅
+                - Accepts input mode "application/pdf"? ✅
+                - Produces "application/json"? ✅
+            - from: client
+              to: client
+              label: Choose authentication scheme
+              json_preview: 'auth: pick "Bearer" (token available)'
+              json_full: |
+                Authentication negotiation:
+                - Supported schemes: Bearer, mTLS
+                - Available creds: Bearer token
+                - Selected: Bearer
+
+        - title: Registry indexes AgentCards (directory without lock-in)
+          description: >-
+            A registry/router can index many AgentCards to enable search and routing,
+            while the source of truth remains each agent's well-known descriptor.
+          actors_visible: [registry, remote]
+          sparkle: true
+          messages:
+            - from: registry
+              to: remote
+              label: Crawl AgentCard
+              json_preview: 'GET /.well-known/agent-card.json'
+            - from: remote
+              to: registry
+              label: AgentCard metadata
+              json_preview: '{"name":"InvoiceAgent","skills":[{"id":"extract","tags":["invoice"]}],"url":"https://agent.example/a2a"}'
+            - from: registry
+              to: registry
+              label: Index for routing
+              json_preview: 'index += {"skill":"extract","agent":"InvoiceAgent","endpoint":"https://agent.example/a2a"}'
+              json_full: |
+                Registry index entry:
+                {
+                  "skill": "extract",
+                  "agent": "InvoiceAgent",
+                  "endpoint": "https://agent.example/a2a",
+                  "auth": ["Bearer", "mTLS"],
+                  "modes": { "in": ["application/pdf"], "out": ["application/json"] }
+                }
+
+
+# ── A2A ───────────────────────────────────────────────────────────
+- id: a2a
+  title: A2A
+  icon_alt: "<>"
+  tagline: Agents working across frameworks
+  detail:
+    links:
+      - { label: "Launch", url: "https://developers.googleblog.com/en/a2a-a-new-era-of-agent-interoperability/" }
+      - { label: "Specification", url: "https://agent2agent.info/specification/" }
+      - { label: "Linux Foundation", url: "https://www.linuxfoundation.org/projects/agent2agent" }
+    what_it_solves: >-
+      Agents built on different frameworks — by different vendors — need
+      to discover each other, negotiate capabilities, and coordinate on
+      tasks. A2A provides a standard protocol for agent-to-agent
+      interoperability without requiring shared internals.
+    how_its_standardizing: >-
+      Announced by Google (April 2025). Quickly moved to open
+      governance under the Linux Foundation. Implemented by multiple
+      platforms; Microsoft ecosystem documentation positions it as a
+      standard integration surface.
+    virtuous_cycle:
+      - "Enterprises can compose agents across vendors instead of buying a monolith."
+      - "Vendors become more valuable by being interoperable, not isolated."
+      - "A shared task/artifact model enables tooling (routers, registries, monitors)."
+  animation:
+    actors:
+      - id: client
+        label: Client Agent
+        type: agent
+      - id: invoice
+        label: InvoiceAgent (Remote)
+        type: agent
+      - id: artifact
+        label: Artifact Store
+        type: server
+
+    scenes:
+      - title: Create task (lifecycle begins)
+        description: >-
+          After AgentCard preflight (skill/mode/auth), the client submits an A2A task.
+          The remote agent acknowledges with a task id and enters a working state.
+        actors_visible: [client, invoice]
+        messages:
+          - from: client
+            to: invoice
+            label: Submit task
+            json_preview: '{"task":{"id":"t-123","state":"submitted"},"messages":[{"role":"user","parts":[{"content_type":"text/plain","content":"Extract invoice fields from this PDF."}]}]}'
+            json_full: |
+              POST /tasks HTTP/1.1
+              Host: agent.example
+              Authorization: Bearer $TOKEN
+              Content-Type: application/json
+
+              {
+                "task": { "id": "t-123", "state": "submitted" },
+                "messages": [{
+                  "role": "user",
+                  "parts": [{
+                    "content_type": "text/plain",
+                    "content": "Extract invoice fields from this PDF."
+                  }, {
+                    "content_type": "application/pdf",
+                    "uri": "https://example.com/inv.pdf"
+                  }]
+                }]
+              }
+          - from: invoice
+            to: client
+            label: Accepted (working)
+            json_preview: '{"task":{"id":"t-123","state":"working"},"status":"accepted"}'
+            json_full: |
+              {
+                "task": { "id": "t-123", "state": "working" },
+                "status": "accepted"
+              }
+
+      - title: Stream progress updates
+        description: >-
+          Long tasks benefit from streaming: the remote agent emits incremental updates
+          (progress, intermediate messages, or partial outputs) until completion.
+        actors_visible: [client, invoice]
+        sparkle: true
+        messages:
+          - from: invoice
+            to: client
+            label: Progress update
+            json_preview: '{"task":{"id":"t-123","state":"working"},"progress":0.35,"message":{"role":"assistant","parts":[{"content_type":"text/plain","content":"Found totals + vendor header. Parsing line items next."}]}}'
+          - from: invoice
+            to: client
+            label: Progress update
+            json_preview: '{"task":{"id":"t-123","state":"working"},"progress":0.75,"message":{"role":"assistant","parts":[{"content_type":"text/plain","content":"Line items parsed; normalizing dates/currency."}]}}'
+
+      - title: Deliver artifacts by reference
+        description: >-
+          The remote agent completes the task and returns artifacts. Artifacts are
+          often referenced by URI so large outputs don’t bloat messages.
+        actors_visible: [client, invoice, artifact]
+        messages:
+          - from: invoice
+            to: artifact
+            label: Store output artifact
+            json_preview: 'PUT /artifacts/t-123/extracted.json'
+          - from: invoice
+            to: client
+            label: Completed + artifact references
+            json_preview: '{"task":{"id":"t-123","state":"completed"},"artifacts":[{"name":"extracted.json","content_type":"application/json","uri":"https://agent.example/artifacts/t-123/extracted.json"}]}'
+            json_full: |
+              {
+                "task": { "id": "t-123", "state": "completed" },
+                "artifacts": [{
+                  "name": "extracted.json",
+                  "content_type": "application/json",
+                  "uri": "https://agent.example/artifacts/t-123/extracted.json"
+                }]
+              }
+          - from: client
+            to: artifact
+            label: Fetch artifact
+            json_preview: 'GET /artifacts/t-123/extracted.json'
+          - from: artifact
+            to: client
+            label: extracted.json
+            json_preview: '{"vendor":"ExampleCo","invoice_number":"INV-1042","total":{"amount":123.45,"currency":"USD"}}'
+            json_full: |
+              {
+                "vendor": "ExampleCo",
+                "invoice_number": "INV-1042",
+                "date": "2026-02-01",
+                "total": { "amount": 123.45, "currency": "USD" },
+                "line_items": [
+                  { "description": "Consulting", "qty": 2, "unit_price": 50.00, "amount": 100.00 },
+                  { "description": "Tax", "qty": 1, "unit_price": 23.45, "amount": 23.45 }
+                ]
+              }
+
+      - title: Cancel an in-flight task (control plane)
+        description: >-
+          A2A includes control-plane operations like cancellation for safety, cost,
+          and user control in multi-step workflows.
+        actors_visible: [client, invoice]
+        sparkle: true
+        messages:
+          - from: client
+            to: invoice
+            label: Cancel task
+            json_preview: 'POST /tasks/t-123/cancel'
+            json_full: |
+              POST /tasks/t-123/cancel HTTP/1.1
+              Host: agent.example
+              Authorization: Bearer $TOKEN
+          - from: invoice
+            to: client
+            label: Canceled
+            json_preview: '{"task":{"id":"t-123","state":"canceled"},"status":"ok"}'
+            json_full: |
+              {
+                "task": { "id": "t-123", "state": "canceled" },
+                "status": "ok"
+              }
 
   # ── Domain Protocols ──────────────────────────────────────────────
   - id: ucp
@@ -1819,51 +1992,6 @@ technologies:
               to: service
               label: authorized request
               json_preview: '{"mandate":"signed_blob"}'
-
-  - id: agent-card
-    title: AgentCard
-    icon_alt: "card"
-    tagline: Well-known agent descriptors
-    detail:
-      links:
-        - { label: "A2A AgentCard spec", url: "https://agent2agent.info/specification/#agentcard" }
-      what_it_solves: >-
-        Before agents can collaborate, they need to discover each other's
-        capabilities, endpoints, and authentication requirements. AgentCard
-        is a JSON descriptor at a well-known URL that tells other agents
-        what this agent can do and how to talk to it.
-      how_its_standardizing: >-
-        Defined as part of A2A. Agents publish a JSON file at
-        /.well-known/agent-card.json describing name, skills, supported
-        input/output modes, and auth schemes. Provides the discovery
-        primitive that higher-level registries can index.
-      virtuous_cycle:
-        - "Agents can discover each other without a central directory."
-        - "Registries index the same descriptor format across vendors."
-        - "A standard metadata shape enables tooling (routers, monitors, catalogs)."
-    animation:
-      actors:
-        - id: agent
-          label: Agent
-          type: agent
-        - id: remote
-          label: Remote Agent
-          type: agent
-      scenes:
-        - title: Discover capabilities
-          description: >-
-            An agent fetches a remote agent's well-known AgentCard
-            descriptor.
-          actors_visible: [agent, remote]
-          messages:
-            - from: agent
-              to: remote
-              label: GET /.well-known/agent-card.json
-              json_preview: '{}'
-            - from: remote
-              to: agent
-              label: AgentCard
-              json_preview: '{"skills":["search","summarize"]}'
 
   - id: agent-registries
     title: Agent Registries
