@@ -8,6 +8,7 @@ let DATA = null;
 let currentView = null;   // 'tree' | 'detail' | 'reader'
 let currentProtocolId = null;
 let scrollObserver = null;
+let modalReturnFocusEl = null;
 const unlockedIds = new Set();
 const BADGE_DEFS = {
   speculative: {
@@ -73,7 +74,7 @@ function getToolbarHtml() {
   // Fullscreen button (only if supported)
   if (document.fullscreenEnabled || document.webkitFullscreenEnabled) {
     html += `<span class="toolbar-sep">|</span>`;
-    html += `<button class="toolbar-link" id="fullscreen-btn">Fullscreen</button>`;
+    html += `<button type="button" class="toolbar-link" id="fullscreen-btn">Fullscreen</button>`;
   }
   
   html += '</div>';
@@ -147,10 +148,10 @@ function route() {
       setupReaderScrollSpy();
       // Scroll to anchor if present, or top if plain #reader
       if (hash.startsWith('reader-')) {
-        const el = document.getElementById(hash);
-        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        readerScrollTo(hash, { updateHash: false });
       } else {
         window.scrollTo(0, 0);
+        focusElement(document.querySelector('.reader-content .hero-title'));
       }
     }
   } else if (hash && DATA.technologies.find(t => t.id === hash && !t._clusterNode)) {
@@ -170,6 +171,19 @@ function cleanup() {
 // ── Navigate ──────────────────────────────────────────────────────
 function navigateTo(hash) {
   window.location.hash = hash ? `#${hash}` : '#';
+}
+
+function focusElement(el) {
+  if (!el || typeof el.focus !== 'function') return;
+  if (!el.hasAttribute('tabindex')) {
+    el.setAttribute('tabindex', '-1');
+  }
+  el.focus({ preventScroll: true });
+}
+
+function prefersReducedMotion() {
+  return typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
 // ── Tree → Layout ────────────────────────────────────────────────
@@ -827,7 +841,6 @@ function showTree() {
   document.title = DATA.title;
 
   const techs = DATA.technologies;
-  const byId = new Map(techs.map(t => [t.id, t]));
   const { pos, nodeToPlaceholderCluster } = computePositions(techs);
 
   // DEBUG: Log layout info
@@ -862,6 +875,8 @@ function showTree() {
   const wrapperW = maxX + cfg.marginX;
   const wrapperH = maxY + cfg.marginY;
 
+  const treeInstructionsId = 'tree-instructions';
+
   // Build node HTML (absolutely positioned)
   let nodesHtml = '';
   techs.forEach(tech => {
@@ -872,12 +887,16 @@ function showTree() {
 
     const iconHtml = techIconHtml(tech, 'node-icon-img');
     const badgeHtml = renderTechBadge(tech.badge, 'tree');
+    const actionText = tech._clusterNode ? 'Opens cluster details.' : 'Opens protocol details.';
+    const stateText = locked ? 'Locked. Activate to unlock.' : 'Unlocked.';
+    const ariaLabel = `${tech.title}${tech.tagline ? ': ' + tech.tagline : ''}. ${stateText} ${actionText}`;
 
     nodesHtml += `
-      <div class="tree-node${lockedClass}${clusterNodeClass}" tabindex="0" role="button"
+      <button type="button" class="tree-node${lockedClass}${clusterNodeClass}"
            data-id="${tech.id}"
            ${tech._clusterNode ? 'data-cluster-node="true"' : ''}
-           aria-label="${escapeHtml(tech.title)}${tech.tagline ? ': ' + escapeHtml(tech.tagline) : ''}"
+           aria-label="${escapeHtml(ariaLabel)}"
+           aria-describedby="${treeInstructionsId}"
            style="left:${p.x}px;top:${p.y}px;width:${cfg.boxW}px;height:${cfg.boxH}px;">
         <div class="node-header">
           <div class="node-icon" aria-hidden="true">${iconHtml}</div>
@@ -885,7 +904,7 @@ function showTree() {
         </div>
         <div class="node-tagline">${escapeHtml(tech.tagline)}</div>
         ${badgeHtml}
-      </div>`;
+      </button>`;
   });
 
   // Build SVG connections using edge routing (supports multiple parents)
@@ -925,7 +944,7 @@ function showTree() {
     if (!cp) return;
     const hasDesc = cluster.description && cluster.description.trim();
     const labelTag = hasDesc
-      ? `<button class="tree-group-label tree-group-label--clickable" onclick="showClusterModal('${escapeHtml(cluster.id)}')">${escapeHtml(cluster.label)} <span class="tree-group-info">[?]</span></button>`
+      ? `<button type="button" class="tree-group-label tree-group-label--clickable" onclick="showClusterModal('${escapeHtml(cluster.id)}')" aria-label="${escapeHtml(cluster.label)} cluster details">${escapeHtml(cluster.label)} <span class="tree-group-info">[?]</span></button>`
       : `<span class="tree-group-label">${escapeHtml(cluster.label)}</span>`;
     clustersHtml += `
       <div class="tree-group" style="left:${cp.x}px;top:${cp.y}px;width:${cp.clusterW}px;height:${cp.clusterH}px">
@@ -933,7 +952,7 @@ function showTree() {
       </div>`;
   });
 
-  const readMoreBtn = DATA.details ? `<button class="read-more-btn" onclick="showDetailsModal()">Read more &gt;</button>` : '';
+  const readMoreBtn = DATA.details ? `<button type="button" class="read-more-btn" onclick="showDetailsModal()">Read more &gt;</button>` : '';
 
   document.getElementById('app').innerHTML = `
     <div class="tree-page">
@@ -948,16 +967,17 @@ function showTree() {
           ${getAttributionHtml()}
         </div>
       </header>
-      <div class="tree-container">
+      <main class="tree-container" id="tree-main" tabindex="0" aria-label="Protocol dependency tree" aria-describedby="${treeInstructionsId}">
+        <p id="${treeInstructionsId}" class="sr-only">Use arrow keys to pan the tree. Use Tab to move between protocol nodes, then press Enter or Space to open.</p>
         <div class="tree-wrapper" style="width:${wrapperW}px;height:${wrapperH}px">
-          <svg class="tree-svg" width="${wrapperW}" height="${wrapperH}" viewBox="0 0 ${wrapperW} ${wrapperH}">
+          <svg class="tree-svg" width="${wrapperW}" height="${wrapperH}" viewBox="0 0 ${wrapperW} ${wrapperH}" aria-hidden="true">
             ${svgPaths}
           </svg>
           ${clustersHtml}
           ${nodesHtml}
         </div>
-      </div>
-      <footer class="tree-footer">Click a node to explore how it works</footer>
+      </main>
+      <footer class="tree-footer">Click or focus a node and press Enter to explore how it works</footer>
     </div>`;
 
   attachToolbarListeners();
@@ -965,6 +985,30 @@ function showTree() {
   // Center the scroll on the tree
   const treeContainer = document.querySelector('.tree-container');
   if (treeContainer) {
+    treeContainer.addEventListener('keydown', (e) => {
+      if (e.target !== treeContainer) return;
+      const step = 120;
+      if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        treeContainer.scrollLeft += step;
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        treeContainer.scrollLeft -= step;
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        treeContainer.scrollTop += step;
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        treeContainer.scrollTop -= step;
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        treeContainer.scrollLeft = 0;
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        treeContainer.scrollLeft = treeContainer.scrollWidth;
+      }
+    });
+
     const wrapper = document.querySelector('.tree-wrapper');
     if (wrapper) {
       const centerX = wrapperW / 2;
@@ -1001,13 +1045,9 @@ function showTree() {
       }
     }
     node.addEventListener('click', handleClick);
-    node.addEventListener('keydown', e => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        handleClick();
-      }
-    });
   });
+
+  focusElement(document.querySelector('.tree-header h1'));
 }
 
 // ================================================================
@@ -1102,7 +1142,7 @@ function showDetail(techId) {
   if (detail.links && detail.links.length) {
     linksHtml = `
       <div class="detail-section detail-links-section">
-        <div class="section-label">Links</div>
+        <h2 class="section-label">Links</h2>
         <ul class="detail-links-list">
           ${detail.links.map(link =>
             `<li><a href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer" class="detail-link-item">${escapeHtml(link.label)}</a></li>`
@@ -1119,7 +1159,7 @@ function showDetail(techId) {
     const scenes = tech.animation.scenes;
     scenesHtml = `
       <div class="detail-section">
-        <div class="section-label">How it works</div>
+        <h2 class="section-label">How it works</h2>
         <div class="reader-scenes">
           ${scenes.map((scene, i) => renderStaticScene(scene, tech.animation.actors, i, scenes.length, techId)).join('')}
         </div>
@@ -1131,7 +1171,7 @@ function showDetail(techId) {
   if (detail.virtuous_cycle && detail.virtuous_cycle.length) {
     cycleHtml = `
       <div class="detail-section">
-        <div class="section-label">The virtuous cycle</div>
+        <h2 class="section-label">The virtuous cycle</h2>
         <ul class="virtuous-cycle">
           ${detail.virtuous_cycle.map(item => `<li>${escapeHtml(item)}</li>`).join('')}
         </ul>
@@ -1144,10 +1184,10 @@ function showDetail(techId) {
   document.getElementById('app').innerHTML = `
     <div class="detail-page">
       <header class="detail-header">
-        <button class="back-btn" onclick="navigateTo('')">&larr; Tree</button>
+        <button type="button" class="back-btn" onclick="navigateTo('')">&larr; Tree</button>
         ${getToolbarHtml()}
       </header>
-      <div class="detail-content">
+      <main class="detail-content" id="detail-main">
         <div class="detail-hero">
           <div class="hero-icon" aria-hidden="true">${heroIconHtml}</div>
           <div class="hero-text">
@@ -1158,21 +1198,21 @@ function showDetail(techId) {
         </div>
 
         <div class="detail-section">
-          <div class="section-label">What it solves</div>
+          <h2 class="section-label">What it solves</h2>
           <div class="section-body">${escapeHtml(detail.what_it_solves)}</div>
         </div>
 
         ${scenesHtml}
 
         <div class="detail-section">
-          <div class="section-label">How it&rsquo;s standardizing</div>
+          <h2 class="section-label">How it&rsquo;s standardizing</h2>
           <div class="section-body">${escapeHtml(detail.how_its_standardizing)}</div>
         </div>
 
         ${cycleHtml}
 
         ${linksHtml}
-      </div>
+      </main>
     </div>`;
 
   // Attach toolbar listeners
@@ -1180,6 +1220,7 @@ function showDetail(techId) {
 
   // Scroll to top
   window.scrollTo(0, 0);
+  focusElement(document.querySelector('.detail-hero .hero-title'));
 }
 
 // ================================================================
@@ -1273,7 +1314,7 @@ function showReader() {
     const label = entry.type === 'cluster' ? entry.item.label : entry.item.title;
     const kids = childrenOf.get(id) || [];
     const cssClass = entry.type === 'cluster' ? 'reader-toc-link reader-toc-link--cluster' : 'reader-toc-link';
-    let html = `<li><a href="#reader-${id}" class="${cssClass}" data-target="reader-${id}" onclick="readerScrollTo('reader-${id}'); event.preventDefault();">${escapeHtml(label)}</a>`;
+    let html = `<li><a href="#reader-${id}" class="${cssClass}" data-target="reader-${id}" aria-controls="reader-${id}" onclick="readerScrollTo('reader-${id}'); event.preventDefault();">${escapeHtml(label)}</a>`;
     if (kids.length) {
       html += '<ul>' + kids.map(renderTocItem).join('') + '</ul>';
     }
@@ -1311,22 +1352,28 @@ function showReader() {
   document.getElementById('app').innerHTML = `
     <div class="reader-page">
       <header class="detail-header">
-        <button class="back-btn" onclick="navigateTo('')">&larr; Tree</button>
+        <button type="button" class="back-btn" onclick="navigateTo('')">&larr; Tree</button>
         ${getToolbarHtml()}
       </header>
       <div class="reader-layout">
-        <nav class="reader-toc" id="reader-toc">
+        <nav class="reader-toc" id="reader-toc" aria-label="Protocol table of contents">
           <div class="reader-toc-header">${escapeHtml(DATA.title)}</div>
           ${tocHtml}
         </nav>
-        <main class="reader-content">
+        <main class="reader-content" id="reader-main">
           ${sectionsHtml}
         </main>
       </div>
     </div>`;
 
   attachToolbarListeners();
-  window.scrollTo(0, 0);
+  const hash = window.location.hash.replace(/^#\/?/, '');
+  if (hash.startsWith('reader-')) {
+    readerScrollTo(hash, { updateHash: false });
+  } else {
+    window.scrollTo(0, 0);
+    focusElement(document.querySelector('.reader-content .hero-title'));
+  }
 
   // Highlight active TOC item on scroll
   setupReaderScrollSpy();
@@ -1345,7 +1392,7 @@ function renderTechArticle(tech) {
   if (detail.links && detail.links.length) {
     linksHtml = `
       <div class="detail-section detail-links-section">
-        <div class="section-label">Links</div>
+        <h3 class="section-label">Links</h3>
         <ul class="detail-links-list">
           ${detail.links.map(link =>
             `<li><a href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer" class="detail-link-item">${escapeHtml(link.label)}</a></li>`
@@ -1360,7 +1407,7 @@ function renderTechArticle(tech) {
     const scenes = tech.animation.scenes;
     scenesHtml = `
       <div class="detail-section">
-        <div class="section-label">How it works</div>
+        <h3 class="section-label">How it works</h3>
         <div class="reader-scenes">
           ${scenes.map((scene, i) => renderStaticScene(scene, tech.animation.actors, i, scenes.length, tech.id)).join('')}
         </div>
@@ -1372,7 +1419,7 @@ function renderTechArticle(tech) {
   if (detail.virtuous_cycle && detail.virtuous_cycle.length) {
     cycleHtml = `
       <div class="detail-section">
-        <div class="section-label">The virtuous cycle</div>
+        <h3 class="section-label">The virtuous cycle</h3>
         <ul class="virtuous-cycle">
           ${detail.virtuous_cycle.map(item => `<li>${escapeHtml(item)}</li>`).join('')}
         </ul>
@@ -1393,14 +1440,14 @@ function renderTechArticle(tech) {
       </div>
 
       <div class="detail-section">
-        <div class="section-label">What it solves</div>
+        <h3 class="section-label">What it solves</h3>
         <div class="section-body">${escapeHtml(detail.what_it_solves)}</div>
       </div>
 
       ${scenesHtml}
 
       <div class="detail-section">
-        <div class="section-label">How it&rsquo;s standardizing</div>
+        <h3 class="section-label">How it&rsquo;s standardizing</h3>
         <div class="section-body">${escapeHtml(detail.how_its_standardizing)}</div>
       </div>
 
@@ -1457,10 +1504,10 @@ function renderStaticScene(scene, allActors, sceneIdx, totalScenes, techId) {
           <div class="msg-arrow-head ${direction}"></div>
         </div>
         ${hasPreview ? `
-          <div class="msg-preview expandable" style="margin-left:${Math.max(0, leftPct - 5)}%;width:${Math.min(100, widthPct + 10)}%"
-               onclick="toggleDetail('${detailId}', '${escapeHtml(msg.label).replace(/'/g, "\\'")}'); event.stopPropagation();" onkeydown="if(event.key==='Enter'){toggleDetail('${detailId}', '${escapeHtml(msg.label).replace(/'/g, "\\'")}'); event.stopPropagation();}" role="button" tabindex="0" title="Click to expand">
+          <button type="button" class="msg-preview msg-preview-btn expandable" style="margin-left:${Math.max(0, leftPct - 5)}%;width:${Math.min(100, widthPct + 10)}%"
+               onclick="toggleDetail('${detailId}', '${escapeHtml(msg.label).replace(/'/g, "\\'")}'); event.stopPropagation();" aria-haspopup="dialog" aria-controls="json-modal" title="Open full message">
             <code>${escapeHtml(msg.json_preview)}</code> <span class="expand-hint">[+]</span>
-          </div>
+          </button>
           <div class="msg-detail" id="${detailId}" style="display:none;">${escapeHtml(detailContent.trim())}</div>` : ''}
       </div>`;
   });
@@ -1482,15 +1529,20 @@ function renderStaticScene(scene, allActors, sceneIdx, totalScenes, techId) {
     </div>`;
 }
 
-function readerScrollTo(targetId) {
+function readerScrollTo(targetId, options = {}) {
+  const updateHash = options.updateHash !== false;
   const el = document.getElementById(targetId);
   if (el) {
     const headerH = document.querySelector('.detail-header')?.offsetHeight || 56;
     const y = el.getBoundingClientRect().top + window.scrollY - headerH - 12;
-    window.scrollTo({ top: y, behavior: 'smooth' });
+    const behavior = prefersReducedMotion() ? 'auto' : 'smooth';
+    window.scrollTo({ top: y, behavior });
+    focusElement(el);
   }
   // Update URL without triggering hashchange/route
-  history.replaceState(null, '', '#' + targetId);
+  if (updateHash) {
+    history.replaceState(null, '', '#' + targetId);
+  }
 }
 
 function setupReaderScrollSpy() {
@@ -1512,8 +1564,10 @@ function setupReaderScrollSpy() {
       const target = link.getAttribute('data-target');
       if (target === activeId) {
         link.classList.add('active');
+        link.setAttribute('aria-current', 'location');
       } else {
         link.classList.remove('active');
+        link.removeAttribute('aria-current');
       }
     });
   }
@@ -1531,9 +1585,6 @@ function setupReaderScrollSpy() {
 
 // ── Modal for JSON Detail ─────────────────────────────────────────
 function showModal(content, title) {
-  // Remove existing modal if any
-  closeModal();
-  
   // Try to reformat as indented JSON; fall back to raw content
   let displayContent = content;
   try {
@@ -1541,59 +1592,100 @@ function showModal(content, title) {
   } catch (e) {
     // Not valid JSON — show raw
   }
-  
+  openModal(title || 'Full Message', escapeHtml(displayContent), {
+    bodyTag: 'pre',
+    bodyClass: 'json-modal__code',
+  });
+}
+
+function getModalFocusableEls(container) {
+  const candidates = container.querySelectorAll(
+    'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+  );
+  return [...candidates].filter((el) => {
+    const style = window.getComputedStyle(el);
+    return style.display !== 'none' && style.visibility !== 'hidden';
+  });
+}
+
+function handleModalKeydown(e) {
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    closeModal();
+    return;
+  }
+  if (e.key !== 'Tab') return;
+
+  const content = e.currentTarget;
+  const focusables = getModalFocusableEls(content);
+  if (!focusables.length) {
+    e.preventDefault();
+    content.focus();
+    return;
+  }
+
+  const first = focusables[0];
+  const last = focusables[focusables.length - 1];
+
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
+  }
+}
+
+function openModal(title, bodyHtml, options = {}) {
+  const bodyTag = options.bodyTag || 'div';
+  const bodyClass = options.bodyClass || 'json-modal__body';
+
+  const returnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  closeModal(false);
+  modalReturnFocusEl = returnFocusEl;
+
   const modal = document.createElement('div');
   modal.className = 'json-modal';
   modal.id = 'json-modal';
+  const titleId = 'json-modal-title';
+  const bodyId = 'json-modal-body';
   modal.innerHTML = `
     <div class="json-modal__backdrop" onclick="closeModal()"></div>
-    <div class="json-modal__content">
+    <div class="json-modal__content" role="dialog" aria-modal="true" aria-labelledby="${titleId}" aria-describedby="${bodyId}" tabindex="-1">
       <div class="json-modal__header">
-        <div class="json-modal__title">${escapeHtml(title || 'Full Message')}</div>
-        <button class="json-modal__close" onclick="closeModal()" aria-label="Close">&times;</button>
+        <h2 class="json-modal__title" id="${titleId}">${escapeHtml(title)}</h2>
+        <button type="button" class="json-modal__close" onclick="closeModal()" aria-label="Close">&times;</button>
       </div>
-      <pre class="json-modal__code">${escapeHtml(displayContent)}</pre>
+      <${bodyTag} class="${bodyClass}" id="${bodyId}">${bodyHtml}</${bodyTag}>
     </div>
   `;
   document.body.appendChild(modal);
-  
-  // Focus trap and escape key
-  modal.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeModal();
-  });
+
+  const modalContent = modal.querySelector('.json-modal__content');
+  modalContent.addEventListener('keydown', handleModalKeydown);
   modal.querySelector('.json-modal__close').focus();
 }
 
-function closeModal() {
+function closeModal(restoreFocus = true) {
   const modal = document.getElementById('json-modal');
-  if (modal) modal.remove();
+  if (!modal) {
+    modalReturnFocusEl = null;
+    return;
+  }
+  modal.remove();
+  if (restoreFocus && modalReturnFocusEl && document.contains(modalReturnFocusEl)) {
+    modalReturnFocusEl.focus({ preventScroll: true });
+  }
+  modalReturnFocusEl = null;
 }
 
 // ── Details Modal (Read more) ─────────────────────────────────────
 function showDetailsModal() {
   if (!DATA || !DATA.details) return;
-  
-  closeModal();
-  
-  const modal = document.createElement('div');
-  modal.className = 'json-modal';
-  modal.id = 'json-modal';
-  modal.innerHTML = `
-    <div class="json-modal__backdrop" onclick="closeModal()"></div>
-    <div class="json-modal__content">
-      <div class="json-modal__header">
-        <div class="json-modal__title">About This Project</div>
-        <button class="json-modal__close" onclick="closeModal()" aria-label="Close">&times;</button>
-      </div>
-      <div class="json-modal__body">${DATA.details.trim()}</div>
-    </div>
-  `;
-  document.body.appendChild(modal);
-  
-  modal.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeModal();
+  openModal('About This Project', DATA.details.trim(), {
+    bodyTag: 'div',
+    bodyClass: 'json-modal__body',
   });
-  modal.querySelector('.json-modal__close').focus();
 }
 
 // ── Cluster Description Modal ─────────────────────────────────────
@@ -1615,28 +1707,10 @@ function showClusterModal(clusterId) {
   }
 
   if (!label || !description) return;
-
-  closeModal();
-
-  const modal = document.createElement('div');
-  modal.className = 'json-modal';
-  modal.id = 'json-modal';
-  modal.innerHTML = `
-    <div class="json-modal__backdrop" onclick="closeModal()"></div>
-    <div class="json-modal__content">
-      <div class="json-modal__header">
-        <div class="json-modal__title">${escapeHtml(label)}</div>
-        <button class="json-modal__close" onclick="closeModal()" aria-label="Close">&times;</button>
-      </div>
-      <div class="json-modal__body">${escapeHtml(description)}</div>
-    </div>
-  `;
-  document.body.appendChild(modal);
-
-  modal.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeModal();
+  openModal(label, escapeHtml(description), {
+    bodyTag: 'div',
+    bodyClass: 'json-modal__body',
   });
-  modal.querySelector('.json-modal__close').focus();
 }
 
 // ── Toggle JSON Detail (legacy inline, now opens modal) ───────────

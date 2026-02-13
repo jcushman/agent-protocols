@@ -13,8 +13,8 @@
 :root {
   --bg: #fafafa;
   --fg: #111;
-  --fg-muted: #666;
-  --fg-dim: #999;
+  --fg-muted: #555;
+  --fg-dim: #666;
   --border: #111;
   --border-light: #ccc;
   --highlight: #e8e8e8;
@@ -39,6 +39,11 @@ body {
   color: var(--fg);
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--border);
+  outline-offset: 2px;
 }
 
 /* ── Loading ───────────────────────────────────────────────────── */
@@ -134,6 +139,10 @@ body {
   color: var(--fg);
 }
 
+.attribution a:focus-visible {
+  color: var(--fg);
+}
+
 .attribution-logo {
   display: block;
   color: var(--fg);
@@ -141,6 +150,10 @@ body {
 }
 
 .attribution-logo:hover {
+  opacity: 0.7;
+}
+
+.attribution-logo:focus-visible {
   opacity: 0.7;
 }
 
@@ -169,6 +182,10 @@ body {
   color: var(--fg);
 }
 
+.read-more-btn:focus-visible {
+  color: var(--fg);
+}
+
 /* ── Tree Container ────────────────────────────────────────────── */
 .tree-container {
   flex: 1;
@@ -178,6 +195,10 @@ body {
   padding: 24px 40px;
   display: flex;
   flex-direction: column;
+}
+
+.tree-container:focus-visible {
+  outline-offset: -2px;
 }
 
 /* ── Era Labels ────────────────────────────────────────────────── */
@@ -231,6 +252,11 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: center;
+  text-align: left;
+  font-family: var(--font);
+  color: inherit;
+  appearance: none;
+  -webkit-appearance: none;
   transition: background 0.1s, color 0.1s;
 }
 
@@ -284,7 +310,6 @@ body {
 .tree-node:focus-visible {
   background: var(--fg);
   color: var(--bg);
-  outline: none;
 }
 
 .tree-node:hover .node-tagline,
@@ -406,6 +431,10 @@ body {
   color: var(--fg);
 }
 
+.tree-group-label--clickable:focus-visible {
+  color: var(--fg);
+}
+
 .tree-group-info {
   font-size: 0.5rem;
   opacity: 0.4;
@@ -413,6 +442,10 @@ body {
 }
 
 .tree-group-label--clickable:hover .tree-group-info {
+  opacity: 1;
+}
+
+.tree-group-label--clickable:focus-visible .tree-group-info {
   opacity: 1;
 }
 
@@ -481,6 +514,11 @@ body {
 }
 
 .back-btn:hover {
+  background: var(--fg);
+  color: var(--bg);
+}
+
+.back-btn:focus-visible {
   background: var(--fg);
   color: var(--bg);
 }
@@ -582,6 +620,10 @@ body {
   color: var(--fg);
 }
 
+.detail-link-item:focus-visible {
+  color: var(--fg);
+}
+
 /* ── Tree Relationships (unlocked by / unlocks) ───────────────── */
 .tree-rel-bar {
   display: flex;
@@ -629,6 +671,10 @@ body {
   color: var(--fg);
 }
 
+.tree-rel-node:focus-visible {
+  color: var(--fg);
+}
+
 .tree-rel-icon {
   width: 28px;
   height: 28px;
@@ -643,6 +689,11 @@ body {
 }
 
 .tree-rel-node:hover .tree-rel-icon {
+  opacity: 1;
+  border-color: var(--border);
+}
+
+.tree-rel-node:focus-visible .tree-rel-icon {
   opacity: 1;
   border-color: var(--border);
 }
@@ -677,6 +728,10 @@ body {
 }
 
 .tree-rel-node:hover .tree-rel-title {
+  opacity: 1;
+}
+
+.tree-rel-node:focus-visible .tree-rel-title {
   opacity: 1;
 }
 
@@ -875,7 +930,21 @@ body {
   cursor: pointer;
 }
 
+.msg-preview-btn {
+  font-family: var(--font);
+  font-size: 0.7rem;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
 .msg-preview.expandable:hover code {
+  background: var(--fg);
+  color: var(--bg);
+  border-color: var(--fg);
+}
+
+.msg-preview.expandable:focus-visible code {
   background: var(--fg);
   color: var(--bg);
   border-color: var(--fg);
@@ -888,6 +957,10 @@ body {
 }
 
 .msg-preview:hover .expand-hint {
+  opacity: 1;
+}
+
+.msg-preview:focus-visible .expand-hint {
   opacity: 1;
 }
 
@@ -972,6 +1045,11 @@ body {
   color: var(--bg);
 }
 
+.json-modal__close:focus-visible {
+  background: var(--fg);
+  color: var(--bg);
+}
+
 .json-modal__code {
   flex: 1;
   overflow: auto;
@@ -1012,6 +1090,14 @@ body {
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
+  }
+
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
   }
 }
 
@@ -1176,6 +1262,12 @@ body {
   color: var(--fg);
 }
 
+.reader-toc-link:focus-visible {
+  color: var(--fg);
+  font-weight: 800;
+  background: var(--highlight);
+}
+
 .reader-toc-link.active {
   color: var(--fg);
   font-weight: 800;
@@ -1239,6 +1331,10 @@ body {
 }
 
 .reader-detail-link:hover {
+  opacity: 0.6;
+}
+
+.reader-detail-link:focus-visible {
   opacity: 0.6;
 }
 
@@ -1366,6 +1462,10 @@ body {
 }
 
 .toolbar-link:hover {
+  color: var(--fg);
+}
+
+.toolbar-link:focus-visible {
   color: var(--fg);
 }
 

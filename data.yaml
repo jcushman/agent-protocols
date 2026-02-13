@@ -62,7 +62,7 @@ tree:
                         children:
                           - id: agent-skills-discovery
                           - id: agent-skills-registries
-                      - id: human-context-protocol
+                      - id: interoperable-memory
                   - id: c-interagent
                     cluster: true
                     display: node
@@ -2005,42 +2005,176 @@ technologies:
   - id: agent-audit
     title: Agent Audit Traces
     icon_alt: "log"
-    tagline: Portable run records
+    tagline: Portable, vendor-neutral run records
     unlock: { state: locked, class: frontier }
     detail:
       links:
-        - { label: "Standard (substrate)", url: "https://opentelemetry.io/docs/concepts/signals/traces/" }
+        - { label: "OpenTelemetry Traces", url: "https://opentelemetry.io/docs/concepts/signals/traces/" }
+        - { label: "OpenTelemetry GenAI semantic conventions", url: "https://opentelemetry.io/docs/specs/semconv/gen-ai/" }
+        - { label: "OpenInference specification", url: "https://arize-ai.github.io/openinference/spec/" }
+        - { label: "W3C PROV (provenance model)", url: "https://www.w3.org/TR/prov-overview/" }
       what_it_solves: >-
-        As agents are able to spend more money or take more significant actions,
-        users and builders want to monitor what they
-        are doing, diagnose incidents, and collect training data for future runs
-        using common tools and formats.
+        As agents take multi-step actions — calling models, invoking tools,
+        reading/writing files, spending money — operators need structured,
+        portable records of what happened. Today, traces are often vendor-
+        specific logs or ad hoc JSON blobs, making cross-system debugging,
+        governance, and evaluation difficult.
+        Agent Audit Traces define a common event model for agent runs:
+        model calls, tool invocations, artifacts, decisions, and user intent
+        attachments — all expressed in a trace format compatible with
+        mainstream observability tooling.
       how_its_standardizing: >-
-        Likely to layer on OpenTelemetry-like traces with agent-specific
-        event schemas, redaction, and artifact references.
+        Convergence is forming around OpenTelemetry as the substrate:
+        - OTel Traces provide the span/event model.
+        - OTel GenAI semantic conventions define fields for LLM calls
+          (model name, token counts, prompts, completions).
+        - OpenInference extends OTel with practical LLM/agent attributes
+          (tool calls, chain-of-thought redaction markers, evaluation hooks).
+        Meanwhile, W3C PROV provides a conceptual provenance model
+        (agents, activities, entities) that maps cleanly onto span graphs.
+        No single “Agent Trace RFC” exists yet, but the ecosystem is clearly
+        layering agent semantics on top of OTel-compatible traces.
       virtuous_cycle:
-        - "Operators can debug and govern agents across vendors with one trace format."
-        - "Vendors integrate once with monitoring and compliance tooling."
-        - "Evaluations and safety reviews become reproducible and comparable."
+        - "Agent frameworks emit traces for their specific users."
+        - "Users develop tooling to analyze and visualize traces."
+        - "Other frameworks adopt the same traces to take advantage of the tooling."
     animation:
       actors:
         - id: agent
-          label: Agent
+          label: Agent Host
           type: agent
-        - id: trace
-          label: Trace Store
+        - id: model
+          label: LLM Provider
           type: server
+        - id: tool
+          label: Tool
+          type: server
+        - id: trace
+          label: OTel Collector / Trace Store
+          type: server
+        - id: auditor
+          label: Operator / Auditor
+          type: app
+
       scenes:
-        - title: Emit trace events
+        - title: Root span for an agent run
           description: >-
-            Each model call and tool action is recorded as a structured
-            trace event.
+            A new trace begins when an agent run starts. The root span
+            represents the user goal and high-level execution context.
           actors_visible: [agent, trace]
           messages:
             - from: agent
               to: trace
-              label: span
-              json_preview: '{"event":"tool_call","name":"read_file"}'
+              label: start root span
+              json_preview: '{"trace_id":"abc123","span":"agent.run","attributes":{"goal":"fix failing tests"}}'
+              json_full: |
+                {
+                  "trace_id": "abc123",
+                  "span_id": "root-1",
+                  "name": "agent.run",
+                  "attributes": {
+                    "agent.name": "CI Agent",
+                    "agent.version": "1.4.0",
+                    "goal": "Fix failing tests",
+                    "user.id": "user-42"
+                  }
+                }
+
+        - title: Model call span (GenAI semantic conventions)
+          description: >-
+            A child span records the LLM call with standardized GenAI attributes.
+          actors_visible: [agent, model, trace]
+          messages:
+            - from: agent
+              to: model
+              label: call model
+              json_preview: '{"model":"gpt-4o","messages":[...]}'
+            - from: agent
+              to: trace
+              label: span (genai)
+              json_preview: '{"span":"genai.request","attributes":{"genai.model":"gpt-4o","genai.prompt_tokens":812}}'
+              json_full: |
+                {
+                  "trace_id": "abc123",
+                  "parent_span_id": "root-1",
+                  "span_id": "model-1",
+                  "name": "genai.request",
+                  "attributes": {
+                    "genai.system": "openai",
+                    "genai.model": "gpt-4o",
+                    "genai.prompt_tokens": 812,
+                    "genai.completion_tokens": 153,
+                    "genai.finish_reason": "tool_calls"
+                  }
+                }
+
+        - title: Tool call span (OpenInference-style extension)
+          description: >-
+            Tool invocations are captured as structured child spans,
+            with arguments, result summaries, and exit codes.
+          actors_visible: [agent, tool, trace]
+          sparkle: true
+          messages:
+            - from: agent
+              to: tool
+              label: execute
+              json_preview: '{"tool":"shell","command":"pytest"}'
+            - from: agent
+              to: trace
+              label: span (tool)
+              json_preview: '{"span":"tool.call","attributes":{"tool.name":"shell","exit_code":1}}'
+              json_full: |
+                {
+                  "trace_id": "abc123",
+                  "parent_span_id": "root-1",
+                  "span_id": "tool-1",
+                  "name": "tool.call",
+                  "attributes": {
+                    "tool.name": "shell",
+                    "tool.command": "pytest",
+                    "tool.exit_code": 1,
+                    "tool.stdout.truncated": true
+                  }
+                }
+
+        - title: Artifact reference (provenance linkage)
+          description: >-
+            Instead of embedding large outputs, traces link to artifacts
+            (files, datasets, screenshots) via URIs.
+          actors_visible: [agent, trace]
+          messages:
+            - from: agent
+              to: trace
+              label: event (artifact)
+              json_preview: '{"event":"artifact","uri":"s3://runs/abc123/screenshot.png"}'
+              json_full: |
+                {
+                  "trace_id": "abc123",
+                  "span_id": "tool-1",
+                  "events": [{
+                    "name": "artifact.created",
+                    "attributes": {
+                      "artifact.uri": "s3://runs/abc123/screenshot.png",
+                      "artifact.type": "image/png"
+                    }
+                  }]
+                }
+
+        - title: Cross-vendor audit & replay
+          description: >-
+            An operator loads the trace in any OTel-compatible backend
+            to inspect the full execution graph across models and tools.
+          actors_visible: [auditor, trace]
+          sparkle: true
+          messages:
+            - from: auditor
+              to: trace
+              label: query trace
+              json_preview: 'GET /traces/abc123'
+            - from: trace
+              to: auditor
+              label: span graph
+              json_preview: '{"trace_id":"abc123","spans":4,"root":"agent.run"}'
 
   - id: ap2
     title: AP2
@@ -2366,81 +2500,118 @@ technologies:
               to: store
               label: fetch state
               json_preview: 'GET /artifacts/s-77'
-
-  - id: human-context-protocol
-    title: Human Context Protocol
-    icon_alt: "ctx"
-    tagline: Portable user memory and preferences
+  - id: interoperable-memory
+    title: Interoperable Memory
+    icon_alt: "mem"
+    tagline: Portable user context across agents
     unlock: { state: locked, class: frontier }
     detail:
       links:
-        - { label: "Project", url: "https://digitaleconomy.stanford.edu/project/loyal-agents/hcp-human-context-protocol/" }
-        - { label: "Paper", url: "https://digitaleconomy.stanford.edu/wp-content/uploads/2024/11/Loyal-Agents.pdf" }
+        - { label: "New America: AI Agents and Memory", url: "https://www.newamerica.org/oti/reports/ai-agents-and-memory/" }
+        - { label: "Stanford HCP Project", url: "https://digitaleconomy.stanford.edu/project/loyal-agents/hcp-human-context-protocol/" }
+        - { label: "OAuth 2.0 Rich Authorization Requests (RFC 9396)", url: "https://www.rfc-editor.org/rfc/rfc9396" }
+        - { label: "Sam Altman interview: Memory is OpenAI's real moat", url: "https://www.cmswire.com/digital-experience/i-spoke-with-sam-altman-what-openais-future-actually-looks-like/" }
       what_it_solves: >-
-        Agents today manage user preferences, goals, and long-term context in
-        ad hoc, vendor-specific memory systems. This makes it impossible for users
-        to switch agents, combine agents, or delegate tasks across systems without
-        losing intent, preferences, and consent. HCP defines a clean boundary
-        between an agent and a user-aligned memory manager.
+        Often, long-term memory (preferences, goals, constraints, past interactions)
+        is stored inside individual assistant products. This creates lock-in:
+        switching agents means losing personalization, history, and accumulated trust.
+        Interoperable Memory moves to user context
+        that is portable, inspectable, and permissioned across services,
+        not trapped inside a single vendor's assistant.
       how_its_standardizing: >-
-        HCP is a research proposal from the Stanford Digital Economy Lab,
-        not yet a formal specification. It proposes a conceptual protocol
-        surface — schema definition, preference search, and preference update —
-        between agents and external "human context" stores. Explicitly framed
-        to enable cross-vendor interoperability and user-controlled memory
-        portability if adopted.
+        There is not yet a dominant protocol. Instead, several strands are converging:
+
+        - Policy framing (e.g., New America) argues for interoperable memory
+          dashboards and user-controlled portability as a governance baseline.
+        - Research proposals like Stanford's Human Context Protocol (HCP)
+          sketch a clean architectural boundary between agents and an external
+          user-aligned context manager.
+        - Existing web standards like OAuth Rich Authorization Requests (RFC 9396)
+          provide a substrate for fine-grained, structured consent when agents
+          read or update user state.
+
+        The likely direction is not a single “memory file format,” but a layered
+        stack: standardized consent + schema declaration + query/update APIs
+        for user-controlled context stores.
       virtuous_cycle:
-        - "Users gain portable, agent-agnostic preferences and long-term context."
-        - "Agent builders can offload memory, consent, and personalization safely."
-        - "Memory providers can specialize and compete without locking in agents."
+        - "Users of open source agents converge on a memory standard."
+        - "One commercial agent vendor adopts the standard to gains a competitive advantage."
+        - "Other commercial agent vendors adopt the standard to remain feature parity."
+
     animation:
       actors:
-        - id: agent
-          label: AI Agent
+        - id: user
+          label: User
+          type: app
+        - id: agent-a
+          label: Agent A
           type: agent
-        - id: memory-a
-          label: Context Manager
+        - id: agent-b
+          label: Agent B
+          type: agent
+        - id: memory
+          label: User Context Store
           type: server
-        - id: memory-b
-          label: Other Provider
-          type: server
+
       scenes:
-        - title: Define preference schema
+        - title: Vendor-locked memory (status quo)
           description: >-
-            The agent declares the structure of user preferences it may read or
-            write, without embedding them directly in prompts.
-          actors_visible: [agent, memory-a]
+            Agent A stores preferences internally. Switching agents
+            means starting from scratch.
+          actors_visible: [user, agent-a]
           messages:
-            - from: agent
-              to: memory-a
-              label: Define schema
-              json_preview: '{"namespace":"prefs","fields":["tone","units"]}'
-        - title: Query human context
+            - from: user
+              to: agent-a
+              label: Set preference
+              json_preview: '{"tone":"concise","units":"metric"}'
+            - from: agent-a
+              to: agent-a
+              label: Store internally
+              json_preview: '{"memory":"proprietary_store"}'
+
+        - title: Externalized context store
           description: >-
-            The agent retrieves relevant preferences at runtime, scoped to the
-            current task.
-          actors_visible: [agent, memory-a]
-          messages:
-            - from: agent
-              to: memory-a
-              label: Search prefs
-              json_preview: '{"query":"units","top_k":1}'
-            - from: memory-a
-              to: agent
-              label: Preference
-              json_preview: '{"key":"units","value":"metric"}'
-        - title: Swap memory provider
-          description: >-
-            A different HCP-compliant context manager can be used without changing
-            the agent logic — user preferences travel with the user.
-          actors_visible: [agent, memory-b]
+            Preferences are stored in a user-aligned context manager,
+            separate from any single agent.
+          actors_visible: [user, agent-a, memory]
           sparkle: true
           messages:
-            - from: agent
-              to: memory-b
-              label: Search prefs
+            - from: agent-a
+              to: memory
+              label: Define schema
+              json_preview: '{"namespace":"prefs","fields":["tone","units"]}'
+            - from: agent-a
+              to: memory
+              label: Write preference
+              json_preview: '{"key":"units","value":"metric"}'
+
+        - title: Fine-grained authorization
+          description: >-
+            Access to memory is governed by structured, explicit consent
+            rather than blanket data sharing.
+          actors_visible: [user, agent-b, memory]
+          messages:
+            - from: agent-b
+              to: user
+              label: Request access
+              json_preview: '{"authorization_details":{"type":"memory.read","namespace":"prefs"}}'
+            - from: user
+              to: agent-b
+              label: Grant scoped consent
+              json_preview: '{"grant":"read:prefs","ttl":"24h"}'
+
+        - title: Agent portability
+          description: >-
+            Agent B reads the same context store using the same interface.
+            User familiarity travels across services.
+          actors_visible: [agent-b, memory]
+          sparkle: true
+          messages:
+            - from: agent-b
+              to: memory
+              label: Query prefs
               json_preview: '{"query":"units","top_k":1}'
-            - from: memory-b
-              to: agent
-              label: Same interface
+            - from: memory
+              to: agent-b
+              label: Preference
               json_preview: '{"key":"units","value":"metric"}'
