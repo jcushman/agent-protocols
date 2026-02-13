@@ -62,6 +62,7 @@ tree:
                         children:
                           - id: agent-skills-discovery
                           - id: agent-skills-registries
+                      - id: human-context-protocol
                   - id: c-interagent
                     cluster: true
                     display: node
@@ -81,19 +82,34 @@ tree:
                     display: node
                     label: Trust & Delegation
                     description: >-
-                      Identity, signatures, and delegated authority. These protocols let
-                      agents prove who is calling, carry user authorization, and enforce
-                      constraints like spending limits and TTLs — whether the counterpart
-                      is another agent or a deterministic API.
+                      Agents are agents of someone — they need to be able to do things reliably
+                      on behalf of their owners, using some but not all of the owner's capabilities.
+                      Protocols that allow agents to do specific trusted tasks lead to standards
+                      for more general capability delegation.
                     items:
-                      - id: agent-identity
-                      - id: ucp
-                      - id: ap2
+                      - id: c-agent-identity
+                        cluster: true
+                        display: node
+                        label: Agent Identity
+                        description: >-
+                          Agents acting on behalf of users need to be able to prove they are who
+                          they say they are so they can enter contracts, make representations,
+                          or otherwise be trusted.
                         children:
-                          - id: intent-mandates
-                  - id: c-user-controls
-                  - id: agent-audit
-                  - id: human-context-protocol
+                          - id: web-bot-auth
+                          - id: visa-tap
+                      - id: c-commerce
+                        cluster: true
+                        display: node
+                        label: Commerce
+                        description: >-
+                          As agents become the front door to the web, the e-commerce world wants to
+                          make sure they can shop for things and pay for them.
+                        children:
+                          - id: ucp
+                          - id: ap2
+                      - id: intent-mandates
+                      - id: agent-audit
 
 # ── Technologies ────────────────────────────────────────────────────
 # unlock.state: locked | unlocked (default unlocked).
@@ -1482,169 +1498,170 @@ technologies:
                 }
 
 
-# ── A2A ───────────────────────────────────────────────────────────
-- id: a2a
-  title: A2A
-  icon_alt: "<>"
-  tagline: Agents working across frameworks
-  detail:
-    links:
-      - { label: "Launch", url: "https://developers.googleblog.com/en/a2a-a-new-era-of-agent-interoperability/" }
-      - { label: "Specification", url: "https://agent2agent.info/specification/" }
-      - { label: "Linux Foundation", url: "https://www.linuxfoundation.org/projects/agent2agent" }
-    what_it_solves: >-
-      Agents built on different frameworks — by different vendors — need
-      to discover each other, negotiate capabilities, and coordinate on
-      tasks. A2A provides a standard protocol for agent-to-agent
-      interoperability without requiring shared internals.
-    how_its_standardizing: >-
-      Announced by Google (April 2025). Quickly moved to open
-      governance under the Linux Foundation. Implemented by multiple
-      platforms; Microsoft ecosystem documentation positions it as a
-      standard integration surface.
-    virtuous_cycle:
-      - "Enterprises can compose agents across vendors instead of buying a monolith."
-      - "Vendors become more valuable by being interoperable, not isolated."
-      - "A shared task/artifact model enables tooling (routers, registries, monitors)."
-  animation:
-    actors:
-      - id: client
-        label: Client Agent
-        type: agent
-      - id: invoice
-        label: InvoiceAgent (Remote)
-        type: agent
-      - id: artifact
-        label: Artifact Store
-        type: server
+  # ── A2A ───────────────────────────────────────────────────────────
+  - id: a2a
+    title: A2A
+    icon_alt: "<>"
+    tagline: Agents working across frameworks
+    detail:
+      links:
+        - { label: "Launch", url: "https://developers.googleblog.com/en/a2a-a-new-era-of-agent-interoperability/" }
+        - { label: "Specification", url: "https://agent2agent.info/specification/" }
+        - { label: "Linux Foundation", url: "https://www.linuxfoundation.org/projects/agent2agent" }
+      what_it_solves: >-
+        Agents built on different frameworks — by different vendors — need
+        to discover each other, negotiate capabilities, and coordinate on
+        tasks. A2A provides a standard protocol for agent-to-agent
+        interoperability without requiring shared internals.
+      how_its_standardizing: >-
+        Announced by Google (April 2025). Quickly moved to open
+        governance under the Linux Foundation. Implemented by multiple
+        platforms; Microsoft ecosystem documentation positions it as a
+        standard integration surface.
+      virtuous_cycle:
+        - "Enterprises can compose agents across vendors instead of buying a monolith."
+        - "Vendors become more valuable by being interoperable, not isolated."
+        - "A shared task/artifact model enables tooling (routers, registries, monitors)."
+    animation:
+      actors:
+        - id: client
+          label: Client Agent
+          type: agent
+        - id: invoice
+          label: InvoiceAgent (Remote)
+          type: agent
+        - id: artifact
+          label: Artifact Store
+          type: server
 
-    scenes:
-      - title: Create task (lifecycle begins)
-        description: >-
-          After AgentCard preflight (skill/mode/auth), the client submits an A2A task.
-          The remote agent acknowledges with a task id and enters a working state.
-        actors_visible: [client, invoice]
-        messages:
-          - from: client
-            to: invoice
-            label: Submit task
-            json_preview: '{"task":{"id":"t-123","state":"submitted"},"messages":[{"role":"user","parts":[{"content_type":"text/plain","content":"Extract invoice fields from this PDF."}]}]}'
-            json_full: |
-              POST /tasks HTTP/1.1
-              Host: agent.example
-              Authorization: Bearer $TOKEN
-              Content-Type: application/json
+      scenes:
+        - title: Create task (lifecycle begins)
+          description: >-
+            After AgentCard preflight (skill/mode/auth), the client submits an A2A task.
+            The remote agent acknowledges with a task id and enters a working state.
+          actors_visible: [client, invoice]
+          messages:
+            - from: client
+              to: invoice
+              label: Submit task
+              json_preview: '{"task":{"id":"t-123","state":"submitted"},"messages":[{"role":"user","parts":[{"content_type":"text/plain","content":"Extract invoice fields from this PDF."}]}]}'
+              json_full: |
+                POST /tasks HTTP/1.1
+                Host: agent.example
+                Authorization: Bearer $TOKEN
+                Content-Type: application/json
 
-              {
-                "task": { "id": "t-123", "state": "submitted" },
-                "messages": [{
-                  "role": "user",
-                  "parts": [{
-                    "content_type": "text/plain",
-                    "content": "Extract invoice fields from this PDF."
-                  }, {
-                    "content_type": "application/pdf",
-                    "uri": "https://example.com/inv.pdf"
+                {
+                  "task": { "id": "t-123", "state": "submitted" },
+                  "messages": [{
+                    "role": "user",
+                    "parts": [{
+                      "content_type": "text/plain",
+                      "content": "Extract invoice fields from this PDF."
+                    }, {
+                      "content_type": "application/pdf",
+                      "uri": "https://example.com/inv.pdf"
+                    }]
                   }]
-                }]
-              }
-          - from: invoice
-            to: client
-            label: Accepted (working)
-            json_preview: '{"task":{"id":"t-123","state":"working"},"status":"accepted"}'
-            json_full: |
-              {
-                "task": { "id": "t-123", "state": "working" },
-                "status": "accepted"
-              }
+                }
+            - from: invoice
+              to: client
+              label: Accepted (working)
+              json_preview: '{"task":{"id":"t-123","state":"working"},"status":"accepted"}'
+              json_full: |
+                {
+                  "task": { "id": "t-123", "state": "working" },
+                  "status": "accepted"
+                }
 
-      - title: Stream progress updates
-        description: >-
-          Long tasks benefit from streaming: the remote agent emits incremental updates
-          (progress, intermediate messages, or partial outputs) until completion.
-        actors_visible: [client, invoice]
-        sparkle: true
-        messages:
-          - from: invoice
-            to: client
-            label: Progress update
-            json_preview: '{"task":{"id":"t-123","state":"working"},"progress":0.35,"message":{"role":"assistant","parts":[{"content_type":"text/plain","content":"Found totals + vendor header. Parsing line items next."}]}}'
-          - from: invoice
-            to: client
-            label: Progress update
-            json_preview: '{"task":{"id":"t-123","state":"working"},"progress":0.75,"message":{"role":"assistant","parts":[{"content_type":"text/plain","content":"Line items parsed; normalizing dates/currency."}]}}'
+        - title: Stream progress updates
+          description: >-
+            Long tasks benefit from streaming: the remote agent emits incremental updates
+            (progress, intermediate messages, or partial outputs) until completion.
+          actors_visible: [client, invoice]
+          sparkle: true
+          messages:
+            - from: invoice
+              to: client
+              label: Progress update
+              json_preview: '{"task":{"id":"t-123","state":"working"},"progress":0.35,"message":{"role":"assistant","parts":[{"content_type":"text/plain","content":"Found totals + vendor header. Parsing line items next."}]}}'
+            - from: invoice
+              to: client
+              label: Progress update
+              json_preview: '{"task":{"id":"t-123","state":"working"},"progress":0.75,"message":{"role":"assistant","parts":[{"content_type":"text/plain","content":"Line items parsed; normalizing dates/currency."}]}}'
 
-      - title: Deliver artifacts by reference
-        description: >-
-          The remote agent completes the task and returns artifacts. Artifacts are
-          often referenced by URI so large outputs don’t bloat messages.
-        actors_visible: [client, invoice, artifact]
-        messages:
-          - from: invoice
-            to: artifact
-            label: Store output artifact
-            json_preview: 'PUT /artifacts/t-123/extracted.json'
-          - from: invoice
-            to: client
-            label: Completed + artifact references
-            json_preview: '{"task":{"id":"t-123","state":"completed"},"artifacts":[{"name":"extracted.json","content_type":"application/json","uri":"https://agent.example/artifacts/t-123/extracted.json"}]}'
-            json_full: |
-              {
-                "task": { "id": "t-123", "state": "completed" },
-                "artifacts": [{
-                  "name": "extracted.json",
-                  "content_type": "application/json",
-                  "uri": "https://agent.example/artifacts/t-123/extracted.json"
-                }]
-              }
-          - from: client
-            to: artifact
-            label: Fetch artifact
-            json_preview: 'GET /artifacts/t-123/extracted.json'
-          - from: artifact
-            to: client
-            label: extracted.json
-            json_preview: '{"vendor":"ExampleCo","invoice_number":"INV-1042","total":{"amount":123.45,"currency":"USD"}}'
-            json_full: |
-              {
-                "vendor": "ExampleCo",
-                "invoice_number": "INV-1042",
-                "date": "2026-02-01",
-                "total": { "amount": 123.45, "currency": "USD" },
-                "line_items": [
-                  { "description": "Consulting", "qty": 2, "unit_price": 50.00, "amount": 100.00 },
-                  { "description": "Tax", "qty": 1, "unit_price": 23.45, "amount": 23.45 }
-                ]
-              }
+        - title: Deliver artifacts by reference
+          description: >-
+            The remote agent completes the task and returns artifacts. Artifacts are
+            often referenced by URI so large outputs don’t bloat messages.
+          actors_visible: [client, invoice, artifact]
+          messages:
+            - from: invoice
+              to: artifact
+              label: Store output artifact
+              json_preview: 'PUT /artifacts/t-123/extracted.json'
+            - from: invoice
+              to: client
+              label: Completed + artifact references
+              json_preview: '{"task":{"id":"t-123","state":"completed"},"artifacts":[{"name":"extracted.json","content_type":"application/json","uri":"https://agent.example/artifacts/t-123/extracted.json"}]}'
+              json_full: |
+                {
+                  "task": { "id": "t-123", "state": "completed" },
+                  "artifacts": [{
+                    "name": "extracted.json",
+                    "content_type": "application/json",
+                    "uri": "https://agent.example/artifacts/t-123/extracted.json"
+                  }]
+                }
+            - from: client
+              to: artifact
+              label: Fetch artifact
+              json_preview: 'GET /artifacts/t-123/extracted.json'
+            - from: artifact
+              to: client
+              label: extracted.json
+              json_preview: '{"vendor":"ExampleCo","invoice_number":"INV-1042","total":{"amount":123.45,"currency":"USD"}}'
+              json_full: |
+                {
+                  "vendor": "ExampleCo",
+                  "invoice_number": "INV-1042",
+                  "date": "2026-02-01",
+                  "total": { "amount": 123.45, "currency": "USD" },
+                  "line_items": [
+                    { "description": "Consulting", "qty": 2, "unit_price": 50.00, "amount": 100.00 },
+                    { "description": "Tax", "qty": 1, "unit_price": 23.45, "amount": 23.45 }
+                  ]
+                }
 
-      - title: Cancel an in-flight task (control plane)
-        description: >-
-          A2A includes control-plane operations like cancellation for safety, cost,
-          and user control in multi-step workflows.
-        actors_visible: [client, invoice]
-        sparkle: true
-        messages:
-          - from: client
-            to: invoice
-            label: Cancel task
-            json_preview: 'POST /tasks/t-123/cancel'
-            json_full: |
-              POST /tasks/t-123/cancel HTTP/1.1
-              Host: agent.example
-              Authorization: Bearer $TOKEN
-          - from: invoice
-            to: client
-            label: Canceled
-            json_preview: '{"task":{"id":"t-123","state":"canceled"},"status":"ok"}'
-            json_full: |
-              {
-                "task": { "id": "t-123", "state": "canceled" },
-                "status": "ok"
-              }
+        - title: Cancel an in-flight task (control plane)
+          description: >-
+            A2A includes control-plane operations like cancellation for safety, cost,
+            and user control in multi-step workflows.
+          actors_visible: [client, invoice]
+          sparkle: true
+          messages:
+            - from: client
+              to: invoice
+              label: Cancel task
+              json_preview: 'POST /tasks/t-123/cancel'
+              json_full: |
+                POST /tasks/t-123/cancel HTTP/1.1
+                Host: agent.example
+                Authorization: Bearer $TOKEN
+            - from: invoice
+              to: client
+              label: Canceled
+              json_preview: '{"task":{"id":"t-123","state":"canceled"},"status":"ok"}'
+              json_full: |
+                {
+                  "task": { "id": "t-123", "state": "canceled" },
+                  "status": "ok"
+                }
 
   # ── Domain Protocols ──────────────────────────────────────────────
   - id: ucp
     title: UCP
+    badge: unclear_adoption
     icon_alt: "$"
     tagline: Universal agent commerce
     detail:
@@ -1664,7 +1681,6 @@ technologies:
       virtuous_cycle:
         - "Merchants implement once and accept many agents."
         - "Agents implement once and can shop broadly."
-        - "Payments/logistics partners standardize integrations around a common flow."
     animation:
       actors:
         - id: agent
@@ -1756,94 +1772,234 @@ technologies:
               label: Session ready
               json_preview: '{"id":"session-xyz","status":"ready_for_complete","total":"$31.98"}'
 
-  - id: agent-identity
-    title: Agent Identity
-    icon_alt: "id"
-    tagline: Verified agents on the open web
+  - id: web-bot-auth
+    title: Web Bot Auth
+    icon_alt: "wba"
+    badge: unclear_adoption
+    tagline: Cryptographic identity for automated web traffic
     detail:
       links:
-        - { label: "HTTP Message Signatures (IETF)", url: "https://datatracker.ietf.org/wg/httpbis/documents/" }
-        - { label: "Cloudflare Web Bot Auth", url: "https://blog.cloudflare.com/secure-agentic-commerce/" }
-        - { label: "Visa TAP", url: "https://developer.visa.com/capabilities/trusted-agent-protocol/trusted-agent-protocol-specifications" }
+        - { label: "Cloudflare: Web Bot Auth docs", url: "https://developers.cloudflare.com/bots/reference/bot-verification/web-bot-auth/" }
+        - { label: "IETF WG: webbotauth", url: "https://datatracker.ietf.org/wg/webbotauth/" }
+        - { label: "IETF draft: architecture", url: "https://datatracker.ietf.org/doc/draft-meunier-web-bot-auth-architecture/" }
+        - { label: "Cloudflare blog: signed agents", url: "https://blog.cloudflare.com/signed-agents/" }
       what_it_solves: >-
-        Websites and merchants need to distinguish legitimate,
-        user-authorized agents from scrapers and bots. Agent Identity
-        protocols use cryptographic signatures to prove an agent's
-        identity on every request — no CAPTCHAs, no IP allowlists.
+        Websites struggle to distinguish legitimate automated clients (bots and AI agents)
+        from spoofed traffic using brittle signals like IP allowlists and User-Agent strings.
+        Web Bot Auth provides a way for automated clients to present a verifiable identity
+        by signing HTTP requests, so web services that want to serve some bots but not
+        others can do so reliably.
       how_its_standardizing: >-
-        Built on HTTP Message Signatures (IETF standards track) as the
-        base primitive. Domain profiles add agent-specific semantics:
-        Cloudflare's Web Bot Auth and Visa's Trusted Agent Protocol (TAP)
-        both use the same signature foundation with different registry
-        and tagging conventions for their ecosystems.
+        Web Bot Auth is emerging via two coupled tracks:
+        (1) operational deployment (e.g., CDNs verifying signed bot/agent requests and
+        maintaining directories of recognized entities), and
+        (2) an IETF working group (webbotauth) drafting interoperable architecture and
+        registry conventions. In practice, adoption pressure comes from bot mitigation
+        economics: “friendly automation” needs an authentication mechanism that scales
+        across many origins without per-site bespoke integration.
       virtuous_cycle:
-        - "Sites can apply policy based on verified identity rather than guesswork."
-        - "Agents get reliable access without adversarial bot mitigation."
-        - "Commerce and high-trust domains get a shared trust substrate."
+        - "Still uncertain — there may be a chicken and egg problem."
+        - "Bot authors adopt authentication to use key hosted services."
+        - "Other services can adopt authentication once supported by major agent frameworks."
     animation:
       actors:
         - id: agent
-          label: Agent
+          label: Signed Agent
           type: agent
+        - id: cdn
+          label: CDN / Bot Manager
+          type: server
+        - id: origin
+          label: Origin Site
+          type: website
+        - id: directory
+          label: Signature Directory
+          type: registry
+      scenes:
+        - title: Publish a verifiable identity (directory)
+          description: >-
+            The operator publishes metadata and a public key in a directory so verifiers can
+            fetch the key material needed to validate request signatures.
+          actors_visible: [agent, directory]
+          messages:
+            - from: agent
+              to: directory
+              label: Publish agent key metadata
+              json_preview: 'PUT /directory/agents/acme-shopping-agent'
+              json_full: |
+                PUT /directory/agents/acme-shopping-agent HTTP/1.1
+                Content-Type: application/json
+
+                {
+                  "name": "Acme Shopping Agent",
+                  "issuer": "Acme, Inc.",
+                  "keys": [{
+                    "kid": "acme-key-1",
+                    "alg": "Ed25519",
+                    "public_key": "BASE64..."
+                  }],
+                  "contact": "security@acme.example",
+                  "policy": "https://acme.example/agent-policy"
+                }
+
+        - title: Sign outbound requests (agent → web)
+          description: >-
+            The agent signs selected HTTP request components so the verifier can confirm
+            integrity and bind the request to the agent identity.
+          actors_visible: [agent, cdn, origin]
+          messages:
+            - from: agent
+              to: cdn
+              label: Signed request
+              json_preview: 'Signature-Input: sig=("@method" "@path" "host")...; Signature: sig=:...:'
+              json_full: |
+                GET /search?q=running+shoes HTTP/1.1
+                Host: shop.example
+                Signature-Input: sig=("@method" "@path" "host");created=1735689600;
+                  keyid="acme-key-1";alg="ed25519";nonce="8b4a..."
+                Signature: sig=:BASE64_SIGNATURE:
+
+        - title: Verify at the edge (CDN)
+          description: >-
+            The CDN verifies the signature by retrieving the public key and reconstructing
+            the signature base. Verified identity can drive allow/deny/rate-limit policy.
+          actors_visible: [cdn, directory, origin]
+          sparkle: true
+          messages:
+            - from: cdn
+              to: directory
+              label: Fetch public key
+              json_preview: 'GET /directory/agents/acme-shopping-agent#kid=acme-key-1'
+            - from: directory
+              to: cdn
+              label: Key material
+              json_preview: '{"kid":"acme-key-1","alg":"Ed25519","public_key":"BASE64..."}'
+            - from: cdn
+              to: cdn
+              label: Validate signature
+              json_preview: 'verify(sig_base, signature, public_key) -> true'
+            - from: cdn
+              to: origin
+              label: Forward with verified identity
+              json_preview: 'X-Agent-Verified: acme-shopping-agent'
+
+        - title: Fallback behavior (not enrolled / invalid signature)
+          description: >-
+            If verification fails, the request is treated as ordinary automated traffic
+            and may be challenged, throttled, or blocked based on site policy.
+          actors_visible: [cdn, origin]
+          messages:
+            - from: cdn
+              to: origin
+              label: Unverified automation path
+              json_preview: 'X-Agent-Verified: false; action=rate_limit'
+
+
+  - id: visa-tap
+    title: Visa TAP
+    icon_alt: "tap"
+    badge: unclear_adoption
+    tagline: Merchant verification of credentialed agents
+    detail:
+      links:
+        - { label: "Visa Developer: TAP overview", url: "https://developer.visa.com/capabilities/trusted-agent-protocol" }
+        - { label: "Visa Developer: TAP specifications", url: "https://developer.visa.com/capabilities/trusted-agent-protocol/trusted-agent-protocol-specifications" }
+        - { label: "GitHub: visa/trusted-agent-protocol", url: "https://github.com/visa/trusted-agent-protocol" }
+        - { label: "Visa newsroom: TAP announcement", url: "https://investor.visa.com/news/news-details/2025/Visa-Introduces-Trusted-Agent-Protocol-An-Ecosystem-Led-Framework-for-AI-Commerce/default.aspx" }
+      what_it_solves: >-
+        Merchants need to reliably distinguish credentialed shopping agents acting on behalf
+        of users from anonymous automation, while minimizing changes to existing web checkout
+        flows. TAP standardizes the core merchant-side tasks: retrieving an agent's public key,
+        verifying a signed request, and applying consistent handling and controls for
+        agent-initiated commerce interactions.
+      how_its_standardizing: >-
+        TAP is industry-led: Visa published specifications and reference implementations,
+        and positions the protocol as compatible with existing web infrastructure and aligned
+        with broader “signed agent” approaches. Standardization pressure comes from
+        payment-adjacent incentives (fraud reduction, merchant trust, predictable onboarding)
+        and from reusable reference components (agent registry, verification proxy patterns).
+      virtuous_cycle:
+        - "Agents onboard once and gain broader merchant acceptance."
+        - "Merchants implement one verification flow and safely accept multiple agents."
+    animation:
+      actors:
+        - id: agent
+          label: Trusted Agent
+          type: agent
+        - id: proxy
+          label: Verification Proxy (Edge/CDN)
+          type: server
         - id: merchant
           label: Merchant Site
           type: merchant
         - id: registry
-          label: Key Registry
+          label: Agent Registry
           type: registry
       scenes:
-        - title: Agent signs its request
+        - title: Agent signs a commerce request
           description: >-
-            The agent makes an HTTP request and attaches a
-            cryptographic signature using HTTP Message Signatures.
-          actors_visible: [agent, merchant]
+            The agent includes a recognition signature in requests to the merchant,
+            enabling verification of integrity and agent identity.
+          actors_visible: [agent, proxy, merchant]
           messages:
             - from: agent
-              to: merchant
-              label: Signed request
-              json_preview: 'Signature-Input: sig2=("@authority" "@path");keyid="...";tag="agent-browser-auth"'
+              to: proxy
+              label: Signed request (agent recognition)
+              json_preview: 'Signature-Input: sig=("@method" "@path" "host")...; keyid="agent-key-123"'
               json_full: |
-                GET /example-product HTTP/1.1
-                Host: example.com
-                Signature-Input: sig2=("@authority" "@path");created=1735689600;
-                  expires=1735693200;keyid="agent-key-123";
-                  alg="Ed25519";nonce="abc123";
-                  tag="agent-browser-auth"
-                Signature: sig2=:BASE64_SIGNATURE_HERE:
-        - title: Merchant verifies identity
+                POST /checkout HTTP/1.1
+                Host: merchant.example
+                Content-Type: application/json
+                Signature-Input: sig=("@method" "@path" "host" "content-digest");created=1735689600;
+                  keyid="agent-key-123";alg="ed25519";nonce="c91e..."
+                Signature: sig=:BASE64_SIGNATURE:
+
+                { "cart_id": "c-77", "shipping": { "zip": "02138" } }
+
+        - title: Merchant retrieves the agent public key
           description: >-
-            The merchant retrieves the agent's public key and verifies
-            the signature. Legitimate agents get through; unknown bots don't.
-          actors_visible: [agent, merchant, registry]
+            To validate the signature, the verifier fetches the public key corresponding to keyid.
+          actors_visible: [proxy, registry]
           messages:
-            - from: merchant
+            - from: proxy
               to: registry
-              label: Fetch public key
-              json_preview: 'GET /.well-known/agent-keys/agent-key-123'
+              label: Lookup key by keyid
+              json_preview: 'GET /agents/keys/agent-key-123'
             - from: registry
-              to: merchant
-              label: Public key
-              json_preview: '{"keyid":"agent-key-123","alg":"Ed25519","public_key":"..."}'
-            - from: merchant
-              to: agent
-              label: Access granted
-              json_preview: 'HTTP/1.1 200 OK'
-        - title: Same signatures work everywhere
+              to: proxy
+              label: Public key + metadata
+              json_preview: '{"keyid":"agent-key-123","alg":"Ed25519","public_key":"BASE64...","agent":"InvoiceAgent"}'
+
+        - title: Verify and forward to merchant backend
           description: >-
-            Whether it's Visa TAP, Cloudflare Web Bot Auth, or
-            Mastercard Agent Pay — the same HTTP Message Signatures
-            standard works across all of them.
-          actors_visible: [agent, merchant]
+            The verifier reconstructs the signature base from the received request,
+            verifies the signature, then forwards the request with verified identity context.
+          actors_visible: [proxy, merchant]
           sparkle: true
           messages:
-            - from: agent
+            - from: proxy
+              to: proxy
+              label: Verify signature
+              json_preview: 'verify(sig_base, signature, public_key) -> true'
+            - from: proxy
               to: merchant
-              label: 'Signed: tag="web-bot-auth"'
-              json_preview: 'Signature-Input: sig2=("@authority" "@path");tag="web-bot-auth"'
+              label: Forward (verified)
+              json_preview: '{"headers":{"X-Agent-Verified":"true","X-Agent-KeyId":"agent-key-123"}}'
+
+        - title: Apply merchant policy (allow/deny/step-up)
+          description: >-
+            After verification, merchants can apply consistent controls: allow specific endpoints,
+            require step-up confirmation for risky actions, throttle, or deny.
+          actors_visible: [merchant]
+          messages:
             - from: merchant
-              to: agent
-              label: Verified
-              json_preview: 'HTTP/1.1 200 OK — Agent identity confirmed'
+              to: merchant
+              label: Policy decision
+              json_preview: 'if verified && endpoint in allowlist -> allow; else -> step_up'
+            - from: merchant
+              to: proxy
+              label: Step-up required (example)
+              json_preview: '{"status":"needs_user_confirm","challenge_uri":"https://merchant.example/confirm?session=s-9"}'
 
   # ── Frontier (locked by default; rocket unlocks) ──────────────────
   - id: agent-audit
@@ -1855,9 +2011,10 @@ technologies:
       links:
         - { label: "Standard (substrate)", url: "https://opentelemetry.io/docs/concepts/signals/traces/" }
       what_it_solves: >-
-        A standard event+artifact record of what an agent did (model calls,
-        tool calls, browser actions, file writes) for replay, debugging,
-        and incident response.
+        As agents are able to spend more money or take more significant actions,
+        users and builders want to monitor what they
+        are doing, diagnose incidents, and collect training data for future runs
+        using common tools and formats.
       how_its_standardizing: >-
         Likely to layer on OpenTelemetry-like traces with agent-specific
         event schemas, redaction, and artifact references.
@@ -1887,6 +2044,7 @@ technologies:
 
   - id: ap2
     title: AP2
+    badge: unclear_adoption
     icon_alt: "pay"
     tagline: Agent-to-agent payments
     detail:
@@ -1942,29 +2100,45 @@ technologies:
 
   - id: intent-mandates
     title: Signed Intent Mandates
+    badge: speculative
     icon_alt: "sig"
-    tagline: Verifiable consent for actions
+    tagline: Portable, machine-verifiable authorization artifacts
     unlock: { state: locked, class: frontier }
     detail:
       links:
-        - { label: "Inspiration (AP2)", url: "https://ap2-protocol.org/specification/" }
+        - { label: "AP2 Specification (Intent Mandate)", url: "https://ap2-protocol.org/specification/" }
+        - { label: "OAuth 2.0 Rich Authorization Requests (RFC 9396)", url: "https://oauth.net/2/rich-authorization-requests/" }
+        - { label: "Kantara Consent Receipt (background)", url: "https://kantarainitiative.org/confluence/display/infosharing/Consent+Receipt+Specification" }
       what_it_solves: >-
-        A signed object binding user intent and constraints (scope, limits,
-        TTL) to downstream agent actions — generalizing the "payments
-        mandate" pattern from AP2 to arbitrary domains.
+        Agents increasingly act on behalf of users across domains — payments,
+        IT operations, data access, procurement, healthcare. Today, user consent
+        and constraints are typically expressed through vendor-specific tokens,
+        coarse OAuth scopes, or opaque session state.
+        Signed Intent Mandates generalize a pattern: a structured, signed object
+        that binds user intent and constraints (scope, resource, limits, TTL,
+        revocation conditions) to downstream agent actions in a portable way.
       how_its_standardizing: >-
-        Expected to converge first in regulated domains (payments, IT ops,
-        healthcare), then generalize to cross-domain consent receipts with
-        standard fields. AP2's payment mandates provide the reference design.
+        This pattern has strong adjacent precedents but no unified cross-domain
+        standard yet.
+        - AP2 defines an "Intent Mandate" for agent-initiated payments.
+        - OAuth Rich Authorization Requests (RFC 9396) standardize structured,
+          fine-grained authorization parameters.
+        - Consent receipt standards define portable consent artifacts.
+        A generalized Signed Intent Mandate layer would converge these ideas into
+        a reusable interop object for arbitrary agent actions.
+        Standardization is likely to begin in regulated domains (finance, healthcare,
+        enterprise IT) and then expand as multi-agent coordination increases.
       virtuous_cycle:
-        - "Counterparties can rely on machine-verifiable authorization."
-        - "Users get enforceable constraints instead of trusting opaque agents."
-        - "Platforms interoperate on the same consent artifact across workflows."
+        - "Users of agents become more comfortable allowing agents to act on their behalf."
+        - "Businesses offer narrow intent mandates to encourage users to work with them."
     animation:
       actors:
         - id: user
           label: User
           type: app
+        - id: wallet
+          label: Intent Wallet / Identity Provider
+          type: server
         - id: agent
           label: Agent
           type: agent
@@ -1972,26 +2146,71 @@ technologies:
           label: Service
           type: server
       scenes:
-        - title: User signs intent
+        - title: User defines structured intent
           description: >-
-            The user signs an intent object defining scope, limits,
-            and expiration.
-          actors_visible: [user, agent]
+            The user specifies constraints for an action: what resource,
+            what limits, and how long the authorization lasts.
+          actors_visible: [user, wallet]
           messages:
             - from: user
-              to: agent
-              label: sign
-              json_preview: '{"action":"deploy","ttl":"1h"}'
-        - title: Agent presents mandate
+              to: wallet
+              label: Create intent
+              json_preview: '{"action":"deploy","resource":"cluster-7","ttl":"1h","max_cost":"$50"}'
+              json_full: |
+                {
+                  "action": "deploy",
+                  "resource": "cluster-7",
+                  "constraints": {
+                    "ttl": "1h",
+                    "max_cost": 50,
+                    "currency": "USD"
+                  }
+                }
+
+        - title: Wallet issues signed mandate
           description: >-
-            The agent attaches the signed mandate to downstream requests.
+            The identity provider or wallet signs the intent object,
+            producing a portable mandate artifact.
+          actors_visible: [wallet, agent]
+          messages:
+            - from: wallet
+              to: agent
+              label: Signed mandate
+              json_preview: '{"mandate_id":"m-42","signature":"BASE64..."}'
+              json_full: |
+                {
+                  "mandate_id": "m-42",
+                  "issuer": "wallet.example",
+                  "subject": "user-123",
+                  "intent": {
+                    "action": "deploy",
+                    "resource": "cluster-7",
+                    "constraints": {
+                      "ttl": "1h",
+                      "max_cost": 50,
+                      "currency": "USD"
+                    }
+                  },
+                  "issued_at": "2026-02-13T14:00:00Z",
+                  "expires_at": "2026-02-13T15:00:00Z",
+                  "signature": "BASE64_SIGNATURE"
+                }
+
+        - title: Agent presents mandate to service
+          description: >-
+            The agent attaches the mandate to its request. The service
+            verifies signature, expiration, and constraints before execution.
           actors_visible: [agent, service]
           sparkle: true
           messages:
             - from: agent
               to: service
-              label: authorized request
-              json_preview: '{"mandate":"signed_blob"}'
+              label: Authorized request
+              json_preview: '{"mandate_id":"m-42","operation":"deploy"}'
+            - from: service
+              to: service
+              label: Verify + enforce constraints
+              json_preview: 'verify(signature) && now < expires_at && cost <= 50 -> allow'
 
   - id: agent-registries
     title: Agent Registries
@@ -2038,26 +2257,35 @@ technologies:
 
   - id: agent-lingua
     title: Agent Lingua Franca
-    icon_alt: "abc"
-    tagline: Token-efficient inter-agent speech
+    icon_alt: "αβ"
+    tagline: Efficient machine-to-machine semantics
+    badge: speculative
     unlock: { state: locked, class: frontier }
     detail:
       links:
-        - { label: "Research (inspiration)", url: "https://arxiv.org/abs/2310.06562" }
+        - { label: "Emergent communication (survey example)", url: "https://arxiv.org/abs/2006.02419" }
+        - { label: "Communicating Activations Between LMs", url: "https://arxiv.org/abs/2501.14082" }
+        - { label: "Translating Neuralese", url: "https://aclanthology.org/P17-1022/" }
       what_it_solves: >-
-        When agents communicate, they use verbose natural language or structured
-        JSON — neither optimized for inter-agent bandwidth. A shared compressed
-        vocabulary or symbolic language could dramatically reduce token costs
-        while preserving semantics across different models and tokenizers.
+        When agents communicate today, they use natural language or verbose JSON.
+        Both are optimized for human readability, not bandwidth, latency, or
+        cross-model efficiency. As multi-agent orchestration scales, token costs,
+        context windows, and serialization overhead become material constraints.
+        An Agent Lingua Franca would define a shared, more compact semantic layer
+        for inter-agent communication.
       how_its_standardizing: >-
-        Expected to emerge as multi-agent orchestration scales and costs matter.
-        Could layer compression codebooks on A2A, develop learned shorthand via
-        multi-agent RL, or converge on symbolic representations that transcend
-        natural language tokenization boundaries.
+        No dominant approach exists. Convergence could occur through:
+        (1) shared symbolic codebooks layered on A2A,
+        (2) learned shorthand via multi-agent reinforcement learning,
+        (3) latent-space exchange (embeddings, activations, KV caches),
+        or (4) compression layers negotiated between compatible agents.
+        Any viable standard would likely require explicit capability negotiation
+        and fallback to human-readable formats.
+        Significant headwinds include interpretability, auditability,
+        regulatory requirements, and tokenizer/model incompatibilities.
       virtuous_cycle:
-        - "Multi-agent workflows become economical as token overhead shrinks."
-        - "Heterogeneous model teams communicate efficiently despite different tokenizers."
-        - "Shared vocabularies enable richer coordination primitives than natural language."
+        - "High traffic agents in controlled situations are optimized for efficiency."
+        - "Additional agents that would benefit from joining lead to standardized interop."
     animation:
       actors:
         - id: agent-a
@@ -2066,18 +2294,78 @@ technologies:
         - id: agent-b
           label: Agent B
           type: agent
+        - id: store
+          label: Shared Artifact Store
+          type: server
+
       scenes:
-        - title: Compressed exchange
+        - title: Symbolic codebook exchange
           description: >-
-            Agents communicate using a shared compressed representation
-            instead of natural language.
+            Agents negotiate a compact symbolic vocabulary for a task domain.
+            Symbols reference shared semantics instead of verbose text.
+          actors_visible: [agent-a, agent-b]
+          messages:
+            - from: agent-a
+              to: agent-b
+              label: negotiate codebook
+              json_preview: '{"codebook_version":"v3","symbols":{"Δ7":"apply_patch","Ω2":"run_tests"}}'
+            - from: agent-b
+              to: agent-a
+              label: ack
+              json_preview: '{"accepted":"v3"}'
+            - from: agent-a
+              to: agent-b
+              label: compressed task
+              json_preview: '{"op":"Δ7","args":["file.py"]}'
+
+        - title: Learned shorthand (RL-evolved)
+          description: >-
+            Through repeated interaction, agents converge on shorter
+            sequences that preserve mutual task performance.
           actors_visible: [agent-a, agent-b]
           sparkle: true
           messages:
             - from: agent-a
               to: agent-b
-              label: message
-              json_preview: '{"sym":"Δ7α"}'
+              label: shorthand
+              json_preview: '{"msg":"⟦A3⟧"}'
+            - from: agent-b
+              to: agent-a
+              label: decoded action
+              json_preview: '{"interpretation":"fetch dependency graph"}'
+
+        - title: Latent exchange (non-text channel)
+          description: >-
+            Compatible agents exchange intermediate representations
+            (e.g., embeddings or KV-cache slices) instead of tokens.
+            The message is opaque to humans but semantically meaningful
+            to aligned model architectures.
+          actors_visible: [agent-a, agent-b]
+          sparkle: true
+          messages:
+            - from: agent-a
+              to: agent-b
+              label: latent payload
+              json_preview: '{"type":"kv-slice","layers":[8,9,10],"shape":[3,4096]}'
+
+        - title: Artifact-by-reference compression
+          description: >-
+            Instead of transmitting full state repeatedly, agents exchange
+            short references to shared artifacts, minimizing repeated context.
+          actors_visible: [agent-a, agent-b, store]
+          messages:
+            - from: agent-a
+              to: store
+              label: store state
+              json_preview: 'PUT /artifacts/s-77'
+            - from: agent-a
+              to: agent-b
+              label: reference
+              json_preview: '{"ref":"s-77","delta":"Δ3"}'
+            - from: agent-b
+              to: store
+              label: fetch state
+              json_preview: 'GET /artifacts/s-77'
 
   - id: human-context-protocol
     title: Human Context Protocol

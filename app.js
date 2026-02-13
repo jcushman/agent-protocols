@@ -9,6 +9,16 @@ let currentView = null;   // 'tree' | 'detail' | 'reader'
 let currentProtocolId = null;
 let scrollObserver = null;
 const unlockedIds = new Set();
+const BADGE_DEFS = {
+  speculative: {
+    label: 'speculative',
+    iconHtml: '&#128640;',
+  },
+  unclear_adoption: {
+    label: 'unclear adoption',
+    iconHtml: '&asymp;',
+  },
+};
 
 // ── Layout Configuration ─────────────────────────────────────────
 const cfg = {
@@ -182,7 +192,7 @@ function buildLayoutFromTree() {
   function walk(nodes, structuralParentId, structuralParentCol) {
     for (const treeNode of nodes) {
       // ── Cluster node ──
-      if (treeNode.cluster && treeNode.items) {
+      if (treeNode.cluster) {
         const extraCols = treeNode.extra_cols || 0;
         let col;
         if (structuralParentId !== null) {
@@ -221,7 +231,7 @@ function buildLayoutFromTree() {
 
           // Walk items + cluster children as regular children of this node
           const allChildren = [
-            ...treeNode.items,
+            ...(treeNode.items || []),
             ...(treeNode.children || []),
           ];
           if (allChildren.length) {
@@ -231,19 +241,26 @@ function buildLayoutFromTree() {
         }
 
         // ── Default cluster: dashed-outline group box ──
-        const itemIds = treeNode.items.map(it => it.id);
+        const clusterItems = treeNode.items || [];
+        const techItems = clusterItems.filter(it => !it.cluster);
+        const nestedClusterItems = clusterItems.filter(it => it.cluster);
+        const itemIds = techItems.map(it => it.id);
         const parentIds = structuralParentId !== null ? [structuralParentId] : [];
-        DATA.clusters.push({
-          id: treeNode.id,
-          label: treeNode.label,
-          description: treeNode.description || '',
-          col,
-          members: itemIds,
-          parentIds,
-        });
+        if (itemIds.length > 0) {
+          DATA.clusters.push({
+            id: treeNode.id,
+            label: treeNode.label,
+            description: treeNode.description || '',
+            col,
+            members: itemIds,
+            parentIds,
+          });
+        } else {
+          console.warn(`Cluster has no direct technology items: ${treeNode.id}`);
+        }
 
         // Walk items: each gets the cluster's column, no tree parent
-        for (const item of treeNode.items) {
+        for (const item of techItems) {
           const tech = techById.get(item.id);
           if (!tech) {
             console.warn(`Cluster item references unknown technology: ${item.id}`);
@@ -257,6 +274,11 @@ function buildLayoutFromTree() {
           if (item.children) {
             walk(item.children, item.id, col);
           }
+        }
+
+        // Walk nested cluster-items as children of this cluster
+        if (nestedClusterItems.length) {
+          walk(nestedClusterItems, treeNode.id, col);
         }
 
         // Walk cluster-level children (e.g., inference-api from c-foundations)
@@ -849,6 +871,7 @@ function showTree() {
     const clusterNodeClass = tech._clusterNode ? ' tree-node--cluster-node' : '';
 
     const iconHtml = techIconHtml(tech, 'node-icon-img');
+    const badgeHtml = renderTechBadge(tech.badge, 'tree');
 
     nodesHtml += `
       <div class="tree-node${lockedClass}${clusterNodeClass}" tabindex="0" role="button"
@@ -861,6 +884,7 @@ function showTree() {
           <div class="node-title">${escapeHtml(tech.title)}</div>
         </div>
         <div class="node-tagline">${escapeHtml(tech.tagline)}</div>
+        ${badgeHtml}
       </div>`;
   });
 
@@ -949,7 +973,7 @@ function showTree() {
     }
   }
 
-  // Attach click handlers (unlock on first click, navigate on second)
+  // Attach click handlers (locked node: unlock + open on same click)
   document.querySelectorAll('.tree-node').forEach(node => {
     function handleClick() {
       const id = node.dataset.id;
@@ -963,6 +987,11 @@ function showTree() {
         if (overlay) {
           overlay.classList.add('unlock-fade');
           overlay.addEventListener('animationend', () => overlay.remove(), { once: true });
+        }
+        if (node.dataset.clusterNode) {
+          showClusterModal(id);
+        } else {
+          navigateTo(id);
         }
       } else if (node.dataset.clusterNode) {
         // Cluster-node: show description modal
@@ -1122,7 +1151,7 @@ function showDetail(techId) {
         <div class="detail-hero">
           <div class="hero-icon" aria-hidden="true">${heroIconHtml}</div>
           <div class="hero-text">
-            <h1 class="hero-title">${escapeHtml(tech.title)}</h1>
+            <h1 class="hero-title">${escapeHtml(tech.title)}${renderTechBadge(tech.badge, 'detail')}</h1>
             <div class="tagline">${escapeHtml(tech.tagline)}</div>
           </div>
           ${relHtml}
@@ -1357,7 +1386,7 @@ function renderTechArticle(tech) {
       <div class="detail-hero">
         <div class="hero-icon" aria-hidden="true">${heroIconHtml}</div>
         <div class="hero-text">
-          <h2 class="hero-title"><a href="#${tech.id}" class="reader-detail-link">${escapeHtml(tech.title)}</a></h2>
+          <h2 class="hero-title"><a href="#${tech.id}" class="reader-detail-link">${escapeHtml(tech.title)}</a>${renderTechBadge(tech.badge, 'detail')}</h2>
           <div class="tagline">${escapeHtml(tech.tagline)}</div>
         </div>
         ${relHtml}
@@ -1639,6 +1668,14 @@ function techIconHtml(tech, cssClass) {
   const alt = escapeHtml(tech.icon_alt);
   const src = `images/icon-${tech.id}.png`;
   return `<img src="${src}" alt="${alt}" class="${cssClass}" onerror="this.replaceWith(document.createTextNode('${alt}'))">`;
+}
+
+function renderTechBadge(badgeId, variant = 'detail') {
+  if (!badgeId) return '';
+  const badge = BADGE_DEFS[badgeId];
+  if (!badge) return '';
+  const label = badge.label || badgeId;
+  return `<span class="tech-badge tech-badge--${escapeHtml(variant)} tech-badge--${escapeHtml(badgeId)}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}" data-badge-label="${escapeHtml(label)}"><span class="tech-badge__icon" aria-hidden="true">${badge.iconHtml}</span></span>`;
 }
 
 function actorIconHtml(actorType) {
