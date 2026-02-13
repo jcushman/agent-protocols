@@ -41,6 +41,27 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+.skip-link {
+  position: absolute;
+  top: 0;
+  left: 12px;
+  z-index: 3000;
+  transform: translateY(-160%);
+  background: var(--bg);
+  color: var(--fg);
+  border: 2px solid var(--border);
+  padding: 6px 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+}
+
+.skip-link:focus-visible {
+  transform: translateY(8px);
+}
+
 :focus-visible {
   outline: 2px solid var(--border);
   outline-offset: 2px;

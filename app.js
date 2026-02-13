@@ -151,7 +151,6 @@ function route() {
         readerScrollTo(hash, { updateHash: false });
       } else {
         window.scrollTo(0, 0);
-        focusElement(document.querySelector('.reader-content .hero-title'));
       }
     }
   } else if (hash && DATA.technologies.find(t => t.id === hash && !t._clusterNode)) {
@@ -952,7 +951,7 @@ function showTree() {
       </div>`;
   });
 
-  const readMoreBtn = DATA.details ? `<button type="button" class="read-more-btn" onclick="showDetailsModal()">Read more &gt;</button>` : '';
+  const readMoreBtn = DATA.details ? `<button type="button" class="read-more-btn" onclick="showDetailsModal()">About &gt;</button>` : '';
 
   document.getElementById('app').innerHTML = `
     <div class="tree-page">
@@ -1047,7 +1046,6 @@ function showTree() {
     node.addEventListener('click', handleClick);
   });
 
-  focusElement(document.querySelector('.tree-header h1'));
 }
 
 // ================================================================
@@ -1220,7 +1218,6 @@ function showDetail(techId) {
 
   // Scroll to top
   window.scrollTo(0, 0);
-  focusElement(document.querySelector('.detail-hero .hero-title'));
 }
 
 // ================================================================
@@ -1372,7 +1369,6 @@ function showReader() {
     readerScrollTo(hash, { updateHash: false });
   } else {
     window.scrollTo(0, 0);
-    focusElement(document.querySelector('.reader-content .hero-title'));
   }
 
   // Highlight active TOC item on scroll
@@ -1679,7 +1675,7 @@ function closeModal(restoreFocus = true) {
   modalReturnFocusEl = null;
 }
 
-// ── Details Modal (Read more) ─────────────────────────────────────
+// ── Details Modal (About) ─────────────────────────────────────
 function showDetailsModal() {
   if (!DATA || !DATA.details) return;
   openModal('About This Project', DATA.details.trim(), {

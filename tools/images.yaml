@@ -47,7 +47,7 @@ images:
       Represents text tokenization — splitting strings into model tokens.
 
   # ── Weight Formats ────────────────────────────────────────────
-  - filename: icon-weights.png
+  - filename: icon-weight-formats.png
     category: tech
     data_id: weight-formats
     style: tech_icon
@@ -76,7 +76,7 @@ images:
       one with a small robot/assistant hint. Blue accent. Represents
       multi-turn conversation formatting.
 
-  # ── Inference API ────────────────────────────────────────────
+  # ── Inference API ─────────────────────────────────────────────
   - filename: icon-inference-api.png
     category: tech
     data_id: inference-api
@@ -86,7 +86,7 @@ images:
       Bright green accent on black terminal background. Represents
       calling a model API.
 
-  # ── Tool Calling ────────────────────────────────────────────
+  # ── Tool Calling ──────────────────────────────────────────────
   - filename: icon-tool-calling.png
     category: tech
     data_id: tool-calling
@@ -96,7 +96,7 @@ images:
       and an x. Orange accent. Represents structured tool invocation
       by a language model.
 
-  # ── MCP ─────────────────────────────────────────────────────
+  # ── MCP ───────────────────────────────────────────────────────
   - filename: icon-mcp.png
     category: tech
     data_id: mcp
@@ -106,65 +106,6 @@ images:
       facing each other "< >" with a spark where they meet. Purple
       accent. Represents the Model Context Protocol connecting clients
       to tool servers.
-
-  # ── AGENTS.md ───────────────────────────────────────────────
-  - filename: icon-agents-md.png
-    category: tech
-    data_id: agents-md
-    style: tech_icon
-    subject: >-
-      A bold Markdown hash "#" heading symbol on a small document page.
-      Teal accent. Represents a Markdown instruction file that agents
-      read on arrival.
-
-  # ── llms.txt ────────────────────────────────────────────────
-  - filename: icon-llms-txt.png
-    category: tech
-    data_id: llms-txt
-    style: tech_icon
-    subject: >-
-      A small text-file icon with two forward slashes "//" and a few
-      ruled lines hinting at a table of contents. Yellow accent.
-      Represents an AI-readable site index.
-
-  # ── Agent Skills ────────────────────────────────────────────
-  - filename: icon-agent-skills.png
-    category: tech
-    data_id: agent-skills
-    style: tech_icon
-    subject: >-
-      A chunky shipping box / package labeled "PKG" with a small
-      lightning bolt on the side. Red accent. Represents a portable
-      skill package an agent can load.
-
-  # ── A2A ─────────────────────────────────────────────────────
-  - filename: icon-a2a.png
-    category: tech
-    data_id: a2a
-    style: tech_icon
-    subject: >-
-      Two small square robot-face outlines facing each other with a
-      double-headed arrow between them. Cyan accent. Represents
-      Agent-to-Agent interoperability.
-
-  # ── UCP ─────────────────────────────────────────────────────
-  - filename: icon-ucp.png
-    category: tech
-    data_id: ucp
-    style: tech_icon
-    subject: >-
-      A bold dollar sign "$" inside a shopping cart outline. Green
-      accent. Represents universal agentic commerce — agents that shop.
-
-  # ── Agent Identity ──────────────────────────────────────────
-  - filename: icon-agent-identity.png
-    category: tech
-    data_id: agent-identity
-    style: tech_icon
-    subject: >-
-      A small ID badge with a key-hole or lock symbol. White badge on
-      dark background. Gold accent on the lock. Represents
-      cryptographic agent identity on the web.
 
   # ── MCP Apps ──────────────────────────────────────────────────
   - filename: icon-mcp-apps.png
@@ -177,7 +118,7 @@ images:
       Represents interactive UI surfaces for MCP tool servers.
 
   # ── Standard Tool Surfaces ────────────────────────────────────
-  - filename: icon-tool-surfaces.png
+  - filename: icon-standard-tool-surfaces.png
     category: tech
     data_id: standard-tool-surfaces
     style: tech_icon
@@ -186,15 +127,55 @@ images:
       and a code file. Gray with white outlines. Represents the
       canonical action surfaces: browser, CLI, and code.
 
-  # ── Skill Signing ─────────────────────────────────────────────
-  - filename: icon-skill-security.png
+  # ── AGENTS.md ────────────────────────────────────────────────
+  - filename: icon-agents-md.png
     category: tech
-    data_id: skill-security
+    data_id: agents-md
     style: tech_icon
     subject: >-
-      A padlock icon with a small checkmark or seal. Gold accent on
-      the lock. Represents signed and verified skill packages with
-      provenance metadata.
+      A bold Markdown hash "#" heading symbol on a small document page.
+      Teal accent. Represents a Markdown instruction file that agents
+      read on arrival.
+
+  # ── llms.txt ──────────────────────────────────────────────────
+  - filename: icon-llms-txt.png
+    category: tech
+    data_id: llms-txt
+    style: tech_icon
+    subject: >-
+      A small text-file icon with two forward slashes "//" and a few
+      ruled lines hinting at a table of contents. Yellow accent.
+      Represents an AI-readable site index.
+
+  # ── Agent Skills ──────────────────────────────────────────────
+  - filename: icon-agent-skills.png
+    category: tech
+    data_id: agent-skills
+    style: tech_icon
+    subject: >-
+      A chunky shipping box / package labeled "PKG" with a small
+      lightning bolt on the side. Red accent. Represents a portable
+      skill package an agent can load.
+
+  # ── Agent Skills Discovery ────────────────────────────────────
+  - filename: icon-agent-skills-discovery.png
+    category: tech
+    data_id: agent-skills-discovery
+    style: tech_icon
+    subject: >-
+      A compass needle over a small globe with a dotted path. Cyan
+      accent. Represents finding skills from a predictable well-known
+      discovery URL.
+
+  # ── Agent Skills Registries ───────────────────────────────────
+  - filename: icon-agent-skills-registries.png
+    category: tech
+    data_id: agent-skills-registries
+    style: tech_icon
+    subject: >-
+      A directory card catalog with stacked package tiles and a search
+      magnifier. Blue accent. Represents searchable npm-style registries
+      for skills.
 
   # ── Agent Loop ────────────────────────────────────────────────
   - filename: icon-agent-loop.png
@@ -206,8 +187,56 @@ images:
       in the center. Orange accent. Represents the iterative agent
       execution cycle: prompt, act, observe, repeat.
 
+  # ── AgentCard ─────────────────────────────────────────────────
+  - filename: icon-agent-card.png
+    category: tech
+    data_id: agent-card
+    style: tech_icon
+    subject: >-
+      An ID card with tiny capability bullets and an endpoint URL line.
+      Teal accent. Represents a well-known JSON descriptor of an
+      agent's capabilities and connection info.
+
+  # ── A2A ───────────────────────────────────────────────────────
+  - filename: icon-a2a.png
+    category: tech
+    data_id: a2a
+    style: tech_icon
+    subject: >-
+      Two small square robot-face outlines facing each other with a
+      double-headed arrow between them. Cyan accent. Represents
+      Agent-to-Agent interoperability.
+
+  # ── UCP ───────────────────────────────────────────────────────
+  - filename: icon-ucp.png
+    category: tech
+    data_id: ucp
+    style: tech_icon
+    subject: >-
+      A bold dollar sign "$" inside a shopping cart outline. Green
+      accent. Represents universal agentic commerce — agents that shop.
+
+  # ── Web Bot Auth ──────────────────────────────────────────────
+  - filename: icon-web-bot-auth.png
+    category: tech
+    data_id: web-bot-auth
+    style: tech_icon
+    subject: >-
+      A robot head with a checkmarked signature seal. Gold accent.
+      Represents cryptographically signed bot traffic that websites can
+      verify.
+
+  # ── Visa TAP ──────────────────────────────────────────────────
+  - filename: icon-visa-tap.png
+    category: tech
+    data_id: visa-tap
+    style: tech_icon
+    subject: >-
+      A payment card tapping against a shield badge. Green accent.
+      Represents trusted-agent verification for commerce interactions.
+
   # ── Agent Audit Traces ────────────────────────────────────────
-  - filename: icon-audit.png
+  - filename: icon-agent-audit.png
     category: tech
     data_id: agent-audit
     style: tech_icon
@@ -216,8 +245,17 @@ images:
       magnifying glass overlay. Gray with white accents. Represents
       portable audit trails and run records.
 
+  # ── AP2 ───────────────────────────────────────────────────────
+  - filename: icon-ap2.png
+    category: tech
+    data_id: ap2
+    style: tech_icon
+    subject: >-
+      Two linked coins with a signed checkmark receipt. Green accent.
+      Represents agent-to-agent payments with mandate verification.
+
   # ── Signed Intent Mandates ────────────────────────────────────
-  - filename: icon-mandate.png
+  - filename: icon-intent-mandates.png
     category: tech
     data_id: intent-mandates
     style: tech_icon
@@ -227,7 +265,7 @@ images:
       consent and authorization tokens.
 
   # ── Agent Registries ──────────────────────────────────────────
-  - filename: icon-registry.png
+  - filename: icon-agent-registries.png
     category: tech
     data_id: agent-registries
     style: tech_icon
@@ -237,7 +275,7 @@ images:
       capability directories for agents.
 
   # ── Agent Lingua Franca ───────────────────────────────────────
-  - filename: icon-lingua.png
+  - filename: icon-agent-lingua.png
     category: tech
     data_id: agent-lingua
     style: tech_icon
@@ -246,16 +284,15 @@ images:
       pointing inward suggesting compression. Cyan accent. Represents
       token-efficient inter-agent communication language.
 
-  # ── Human Context Protocol ──────────────────────────────────────
-  - filename: icon-hcp.png
+  # ── Interoperable Memory ──────────────────────────────────────
+  - filename: icon-interoperable-memory.png
     category: tech
-    data_id: human-context-protocol
+    data_id: interoperable-memory
     style: tech_icon
     subject: >-
-      A stylized human silhouette or head outline with a memory/database
-      symbol (small cylinder or stacked cards) beside it. Teal accent.
-      Represents portable user preferences and context that travel with
-      the user across agents.
+      A memory card and user silhouette connected by sync arrows. Teal
+      accent. Represents portable user context that can move across
+      agent products.
 
 
 # ════════════════════════════════════════════════════════════════
@@ -342,13 +379,3 @@ images:
       A friendly storefront awning over a shop door — the classic
       market stall look. A small price tag or shopping bag visible.
       Green accent. Represents a merchant in commerce flows.
-
-  # ── SKILL (Skill Package) ──────────────────────────────────
-  - filename: actor-skill.png
-    category: actor
-    actor_type: skill
-    style: actor_icon
-    subject: >-
-      An open book or scroll with a small lightning bolt rising from
-      its pages — knowledge that comes alive. Red accent on the bolt.
-      Represents a portable skill package.
