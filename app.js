@@ -981,7 +981,7 @@ function showTree() {
 
   attachToolbarListeners();
 
-  // Center the scroll on the tree
+  // Initial viewport: left edge + vertically centered on leftmost column
   const treeContainer = document.querySelector('.tree-container');
   if (treeContainer) {
     treeContainer.addEventListener('keydown', (e) => {
@@ -1008,12 +1008,26 @@ function showTree() {
       }
     });
 
-    const wrapper = document.querySelector('.tree-wrapper');
-    if (wrapper) {
-      const centerX = wrapperW / 2;
-      const targetScroll = centerX - treeContainer.clientWidth / 2;
-      treeContainer.scrollLeft = Math.max(0, targetScroll);
+    const visibleItems = [...pos.values()].filter(p => !p.isPlaceholder);
+    const leftmostCol = visibleItems.length
+      ? Math.min(...visibleItems.map(p => p.col))
+      : 0;
+    const leftColItems = visibleItems.filter(p => p.col === leftmostCol);
+
+    let leftColTop = 0;
+    let leftColBottom = wrapperH;
+    if (leftColItems.length) {
+      leftColTop = Math.min(...leftColItems.map(p => p.y));
+      leftColBottom = Math.max(...leftColItems.map(p => p.y + (p.isCluster ? p.clusterH : cfg.boxH)));
     }
+
+    requestAnimationFrame(() => {
+      treeContainer.scrollLeft = 0;
+      const leftColCenterY = (leftColTop + leftColBottom) / 2;
+      const targetTop = leftColCenterY - (treeContainer.clientHeight / 2);
+      const maxTop = Math.max(0, treeContainer.scrollHeight - treeContainer.clientHeight);
+      treeContainer.scrollTop = Math.max(0, Math.min(maxTop, targetTop));
+    });
   }
 
   // Attach click handlers (locked node: unlock + open on same click)
